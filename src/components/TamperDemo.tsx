@@ -1,226 +1,423 @@
-import { useState, useEffect } from 'react';
-import { HashService, HashConfig } from '../utils/hashUtils';
-import NotificationService from '../utils/notificationService';
-import { DocumentDuplicateIcon, ArrowPathIcon, LockClosedIcon } from '@heroicons/react/24/outline';
-import HashComparison from './HashComparison';
-import HashVisualization from './HashVisualization';
+import { useState, useCallback, useEffect } from 'react';
+import { HashService, HashAnalysis } from '../utils/hashUtils';
+import {
+  DocumentCheckIcon,
+  DocumentDuplicateIcon,
+  ExclamationTriangleIcon,
+  CheckCircleIcon,
+  ArrowPathIcon,
+  DocumentTextIcon,
+  ClipboardIcon,
+  ChartBarIcon,
+  AdjustmentsHorizontalIcon,
+  BeakerIcon
+} from '@heroicons/react/24/outline';
 
-const DEMO_TEXTS = [
+interface FileHash {
+  filename: string;
+  content: string;
+  hash: string;
+  status: 'unchanged' | 'modified' | 'checking';
+  lastModified?: Date;
+  modificationCount?: number;
+  analysis?: HashAnalysis;
+}
+
+interface HashAlgorithm {
+  id: 'md5' | 'sha1' | 'sha256' | 'sha512';
+  name: string;
+  length: number;
+}
+
+interface HashDiff {
+  originalBit: string;
+  modifiedBit: string;
+  isChanged: boolean;
+  position: number;
+}
+
+const DEMO_FILES: FileHash[] = [
   {
-    title: '示例1：单字符修改',
-    original: '这是一段示例文本，用于演示哈希值的变化。',
-    modified: '这是一段示范文本，用于演示哈希值的变化。'
+    filename: 'config.json',
+    content: '{\n  "apiKey": "your-api-key",\n  "endpoint": "https://api.example.com",\n  "timeout": 5000,\n  "retries": 3\n}',
+    hash: '',
+    status: 'checking'
   },
   {
-    title: '示例2：空格修改',
-    original: 'Hello World',
-    modified: 'HelloWorld'
+    filename: 'data.txt',
+    content: '这是一个示例文本文件，用于演示文件完整性检查。\n请尝试修改文件内容，观察哈希值的变化。\n\n文件完整性检查是信息安全中的重要手段，可以及时发现未经授权的修改。',
+    hash: '',
+    status: 'checking'
   },
   {
-    title: '示例3：大小写修改',
-    original: 'Password123',
-    modified: 'password123'
+    filename: 'script.js',
+    content: 'function calculateHash(data) {\n  return crypto.subtle.digest("SHA-256", data)\n    .then(hash => {\n      return Array.from(new Uint8Array(hash))\n        .map(b => b.toString(16).padStart(2, "0"))\n        .join("");\n    });\n}',
+    hash: '',
+    status: 'checking'
   }
 ];
 
+const HASH_ALGORITHMS: HashAlgorithm[] = [
+  { id: 'md5', name: 'MD5', length: 32 },
+  { id: 'sha1', name: 'SHA-1', length: 40 },
+  { id: 'sha256', name: 'SHA-256', length: 64 },
+  { id: 'sha512', name: 'SHA-512', length: 128 }
+];
+
 export default function TamperDemo() {
-  const [originalText, setOriginalText] = useState('这是一段示例文本，用于演示哈希值的变化。');
-  const [modifiedText, setModifiedText] = useState('这是一段示例文本，用于演示哈希值的变化。');
-  const [originalHash, setOriginalHash] = useState('');
-  const [modifiedHash, setModifiedHash] = useState('');
-  const [algorithm, setAlgorithm] = useState<HashConfig['algorithm']>('sha256');
-  const [showComparison, setShowComparison] = useState(true);
-  const [selectedDemo, setSelectedDemo] = useState(0);
+  const [files, setFiles] = useState<FileHash[]>(() =>
+    DEMO_FILES.map(file => ({
+      ...file,
+      hash: '',
+      modificationCount: 0,
+      lastModified: new Date()
+    }))
+  );
+  const [selectedFile, setSelectedFile] = useState<number>(0);
+  const [editedContent, setEditedContent] = useState<string>(files[0].content);
+  const [showDiff, setShowDiff] = useState(false);
+  const [algorithm, setAlgorithm] = useState<HashAlgorithm['id']>('sha256');
+  const [hashDiffs, setHashDiffs] = useState<HashDiff[]>([]);
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [showTestVectors, setShowTestVectors] = useState(false);
+  const [testVectors, setTestVectors] = useState<{
+    original: { input: string; hash: string };
+    variants: Array<{ input: string; hash: string; description: string }>;
+  } | null>(null);
+
+  const calculateHash = useCallback(async (content: string) => {
+    const result = await HashService.calculateTextHash(content, { algorithm });
+    return result.hash;
+  }, [algorithm]);
+
+  const updateFileAnalysis = useCallback(async (fileIndex: number, hash: string) => {
+    const analysis = HashService.analyzeHash(hash);
+    setFiles(prev => prev.map((file, index) =>
+      index === fileIndex ? { ...file, analysis } : file
+    ));
+  }, []);
+
+  const initializeHashes = useCallback(async () => {
+    const updatedFiles = await Promise.all(
+      files.map(async (file) => {
+        const hash = await calculateHash(file.content);
+        const analysis = HashService.analyzeHash(hash);
+        return {
+          ...file,
+          hash,
+          analysis,
+          status: 'unchanged' as const
+        };
+      })
+    );
+    setFiles(updatedFiles);
+  }, [files, calculateHash]);
 
   useEffect(() => {
-    const calculateHashes = async () => {
-      try {
-        const config: HashConfig = { algorithm };
-        const original = await HashService.calculateTextHash(originalText, config);
-        const modified = await HashService.calculateTextHash(modifiedText, config);
+    initializeHashes();
+  }, [algorithm]);
 
-        setOriginalHash(original.hash);
-        setModifiedHash(modified.hash);
-      } catch (error) {
-        NotificationService.error('计算哈希值时发生错误');
+  const handleContentChange = async (content: string) => {
+    setEditedContent(content);
+    const newHash = await calculateHash(content);
+
+    setFiles(prev => prev.map((file, index) => {
+      if (index === selectedFile) {
+        const isModified = file.hash !== newHash;
+        return {
+          ...file,
+          status: isModified ? 'modified' : 'unchanged',
+          lastModified: isModified ? new Date() : file.lastModified,
+          modificationCount: isModified ? (file.modificationCount || 0) + 1 : file.modificationCount
+        };
       }
-    };
+      return file;
+    }));
 
-    calculateHashes();
-  }, [originalText, modifiedText, algorithm]);
+    // 更新分析数据
+    await updateFileAnalysis(selectedFile, newHash);
+
+    // 计算哈希值差异
+    if (files[selectedFile].hash) {
+      const originalHash = files[selectedFile].hash;
+      const comparison = HashService.compareHashes(originalHash, newHash);
+      const diffs: HashDiff[] = Array.from(newHash).map((bit, index) => ({
+        originalBit: originalHash[index],
+        modifiedBit: bit,
+        isChanged: comparison.diffPositions.includes(index),
+        position: index
+      }));
+      setHashDiffs(diffs);
+    }
+  };
+
+  const generateTestVectors = async () => {
+    const vectors = await HashService.generateTestVectors(
+      files[selectedFile].content,
+      algorithm
+    );
+    setTestVectors(vectors);
+  };
+
+  const resetFile = (index: number) => {
+    const file = files[index];
+    setEditedContent(file.content);
+    handleContentChange(file.content);
+  };
 
   const handleCopyHash = (hash: string) => {
     navigator.clipboard.writeText(hash);
-    NotificationService.success('哈希值已复制到剪贴板');
+    setCopySuccess(true);
+    setTimeout(() => setCopySuccess(false), 2000);
   };
 
-  const handleDemoSelect = (index: number) => {
-    setSelectedDemo(index);
-    setOriginalText(DEMO_TEXTS[index].original);
-    setModifiedText(DEMO_TEXTS[index].modified);
+  const calculateChangedBits = () => {
+    return hashDiffs.filter(diff => diff.isChanged).length;
   };
 
-  const handleReset = () => {
-    setModifiedText(originalText);
-  };
-
-  // 计算文本差异并高亮显示
-  const renderDiff = () => {
-    const diffChars = [];
-    const maxLength = Math.max(originalText.length, modifiedText.length);
-
-    for (let i = 0; i < maxLength; i++) {
-      const char = modifiedText[i] || '';
-      const isDifferent = char !== originalText[i];
-
-      diffChars.push(
-        <span
-          key={i}
-          className={isDifferent ? 'bg-yellow-200 text-red-600' : ''}
-        >
-          {char}
-        </span>
-      );
-    }
-
-    return diffChars;
+  const calculateChangePercentage = () => {
+    return ((calculateChangedBits() / hashDiffs.length) * 100).toFixed(1);
   };
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 篡改检测部分 */}
-        <div className="p-4 bg-white rounded-lg shadow">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">篡改检测演示</h2>
-            <div className="flex items-center space-x-4">
-              <select
-                value={algorithm}
-                onChange={(e) => setAlgorithm(e.target.value as HashConfig['algorithm'])}
-                className="border rounded px-3 py-1"
-              >
-                <option value="md5">MD5</option>
-                <option value="sha1">SHA-1</option>
-                <option value="sha256">SHA-256</option>
-                <option value="sha512">SHA-512</option>
-              </select>
-              <button
-                onClick={() => setShowComparison(!showComparison)}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
-                {showComparison ? '隐藏详细比较' : '显示详细比较'}
-              </button>
-            </div>
-          </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold flex items-center">
+          <DocumentCheckIcon className="h-6 w-6 mr-2 text-green-600" />
+          文件完整性检查
+        </h2>
+        <div className="flex items-center space-x-4">
+          <select
+            value={algorithm}
+            onChange={(e) => setAlgorithm(e.target.value as HashAlgorithm['id'])}
+            className="border border-gray-300 rounded-md text-sm py-1 px-2 focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+          >
+            {HASH_ALGORITHMS.map(algo => (
+              <option key={algo.id} value={algo.id}>
+                {algo.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => setShowAnalysis(!showAnalysis)}
+            className={`flex items-center px-3 py-1 rounded-md text-sm ${showAnalysis ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'
+              }`}
+          >
+            <ChartBarIcon className="h-4 w-4 mr-1" />
+            分析
+          </button>
+        </div>
+      </div>
 
-          {/* 示例选择器 */}
-          <div className="flex space-x-2 overflow-x-auto pb-2 mb-4">
-            {DEMO_TEXTS.map((demo, index) => (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 文件列表 */}
+        <div className="bg-white rounded-lg shadow-sm p-4">
+          <h3 className="text-sm font-medium mb-4 flex items-center">
+            <DocumentDuplicateIcon className="h-5 w-5 mr-2 text-blue-600" />
+            监控文件
+          </h3>
+          <div className="space-y-2">
+            {files.map((file, index) => (
               <button
                 key={index}
-                onClick={() => handleDemoSelect(index)}
-                className={`px-4 py-2 rounded-full text-sm whitespace-nowrap ${selectedDemo === index
-                  ? 'bg-blue-100 text-blue-800'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                onClick={() => {
+                  setSelectedFile(index);
+                  setEditedContent(file.content);
+                }}
+                className={`w-full p-3 rounded-lg text-left transition-all ${selectedFile === index
+                  ? 'bg-blue-50 border-blue-200 border shadow-sm'
+                  : 'hover:bg-gray-50'
                   }`}
               >
-                {demo.title}
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-sm">{file.filename}</span>
+                  {file.status === 'modified' ? (
+                    <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />
+                  ) : file.status === 'unchanged' ? (
+                    <CheckCircleIcon className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <ArrowPathIcon className="h-5 w-5 text-gray-400 animate-spin" />
+                  )}
+                </div>
+                <div className="mt-1 text-xs font-mono text-gray-500 truncate">
+                  {file.hash || '计算中...'}
+                </div>
+                {file.modificationCount !== undefined && file.modificationCount > 0 && (
+                  <div className="mt-1 text-xs text-gray-500">
+                    修改次数: {file.modificationCount}
+                  </div>
+                )}
               </button>
             ))}
           </div>
+        </div>
 
-          <div className="grid grid-cols-1 gap-4">
-            {/* 原始文本区域 */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="block font-medium">原始文本</label>
-                <LockClosedIcon className="h-4 w-4 text-gray-400" />
+        {/* 文件内容编辑器和分析 */}
+        <div className="lg:col-span-2 space-y-4">
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center">
+                <DocumentTextIcon className="h-5 w-5 mr-2 text-blue-600" />
+                <h3 className="font-medium">
+                  {files[selectedFile].filename}
+                </h3>
               </div>
-              <textarea
-                value={originalText}
-                onChange={(e) => setOriginalText(e.target.value)}
-                className="w-full h-32 p-2 border rounded"
-                placeholder="输入原始文本..."
-              />
-              <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded">
-                <span className="text-sm font-mono break-all flex-1">
-                  {originalHash}
-                </span>
+              <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => handleCopyHash(originalHash)}
-                  className="p-1 hover:bg-gray-200 rounded"
-                  title="复制哈希值"
+                  onClick={() => setShowDiff(!showDiff)}
+                  className={`flex items-center px-3 py-1 text-sm ${showDiff ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'
+                    } rounded-md`}
                 >
-                  <DocumentDuplicateIcon className="h-4 w-4" />
+                  <AdjustmentsHorizontalIcon className="h-4 w-4 mr-1" />
+                  {showDiff ? '隐藏差异' : '显示差异'}
                 </button>
-              </div>
-            </div>
-
-            {/* 修改后文本区域 */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="block font-medium">修改后文本</label>
                 <button
-                  onClick={handleReset}
-                  className="flex items-center text-sm text-blue-600 hover:text-blue-800"
-                  title="重置为原始文本"
+                  onClick={() => resetFile(selectedFile)}
+                  className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md"
                 >
                   <ArrowPathIcon className="h-4 w-4 mr-1" />
                   重置
                 </button>
               </div>
-              <textarea
-                value={modifiedText}
-                onChange={(e) => setModifiedText(e.target.value)}
-                className="w-full h-32 p-2 border rounded"
-                placeholder="修改文本以查看哈希值变化..."
-              />
-              <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded">
-                <span
-                  className={`text-sm font-mono break-all flex-1 ${originalHash !== modifiedHash ? 'text-red-600' : ''
-                    }`}
-                >
-                  {modifiedHash}
-                </span>
-                <button
-                  onClick={() => handleCopyHash(modifiedHash)}
-                  className="p-1 hover:bg-gray-200 rounded"
-                  title="复制哈希值"
-                >
-                  <DocumentDuplicateIcon className="h-4 w-4" />
-                </button>
-              </div>
             </div>
+            <textarea
+              value={editedContent}
+              onChange={(e) => handleContentChange(e.target.value)}
+              className="w-full h-64 p-3 font-mono text-sm border rounded-md focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+            />
           </div>
 
           {/* 哈希值比较 */}
-          {showComparison && (
-            <div className="border-t pt-4 mt-4">
-              <h3 className="font-medium mb-4">哈希值详细比较</h3>
-              <HashComparison
-                originalHash={originalHash}
-                modifiedHash={modifiedHash}
-              />
+          {showDiff && hashDiffs.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <h3 className="text-sm font-medium mb-4">哈希值差异</h3>
+              <div className="flex flex-wrap font-mono text-sm">
+                {hashDiffs.map((diff, index) => (
+                  <span
+                    key={index}
+                    className={`p-1 ${diff.isChanged ? 'bg-yellow-200 text-red-600' : ''}`}
+                    title={`位置: ${diff.position + 1}`}
+                  >
+                    {diff.modifiedBit}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-4 text-sm text-gray-600">
+                变化位数: {calculateChangedBits()} / {hashDiffs.length} ({calculateChangePercentage()}%)
+              </div>
             </div>
           )}
 
-          {/* 检测结果 */}
-          <div className="mt-4 bg-gray-50 p-4 rounded">
-            <h3 className="font-medium mb-2">检测结果</h3>
-            {originalHash === modifiedHash ? (
-              <div className="text-green-600">
-                ✓ 文本未被篡改（哈希值相同）
+          {/* 哈希分析 */}
+          {showAnalysis && files[selectedFile].analysis && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium flex items-center">
+                  <ChartBarIcon className="h-5 w-5 mr-2 text-blue-600" />
+                  哈希分析
+                </h3>
+                <button
+                  onClick={() => setShowTestVectors(!showTestVectors)}
+                  className={`flex items-center px-3 py-1 text-sm ${showTestVectors ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'
+                    } rounded-md`}
+                >
+                  <BeakerIcon className="h-4 w-4 mr-1" />
+                  {showTestVectors ? '隐藏测试向量' : '生成测试向量'}
+                </button>
               </div>
-            ) : (
-              <div className="text-red-600">
-                ⚠ 检测到文本被篡改（哈希值不同）
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <h4 className="text-xs font-medium text-gray-600">熵值</h4>
+                  <p className="text-lg font-medium">
+                    {files[selectedFile].analysis.entropy.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">比特/字符</p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <h4 className="text-xs font-medium text-gray-600">雪崩效应</h4>
+                  <p className="text-lg font-medium">
+                    {files[selectedFile].analysis.avalancheEffect.toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">相邻位变化率</p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <h4 className="text-xs font-medium text-gray-600">比特分布</h4>
+                  <p className="text-sm font-medium">
+                    0: {files[selectedFile].analysis.zeros} 个
+                    <br />
+                    1: {files[selectedFile].analysis.ones} 个
+                  </p>
+                </div>
               </div>
-            )}
+
+              {showTestVectors && testVectors && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-medium mb-3">测试向量</h4>
+                  <div className="space-y-2">
+                    {testVectors.variants.map((variant, index) => (
+                      <div key={index} className="bg-gray-50 p-3 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">{variant.description}</span>
+                          <span className="text-xs text-gray-500">
+                            变化率: {
+                              HashService.compareHashes(testVectors.original.hash, variant.hash)
+                                .diffPercentage.toFixed(1)
+                            }%
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs font-mono text-gray-600 break-all">
+                          {variant.hash}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 文件状态 */}
+          <div className={`p-4 rounded-lg ${files[selectedFile].status === 'modified'
+            ? 'bg-red-50 border border-red-200'
+            : 'bg-green-50 border border-green-200'
+            }`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                {files[selectedFile].status === 'modified' ? (
+                  <>
+                    <ExclamationTriangleIcon className="h-5 w-5 text-red-500 mr-2" />
+                    <div>
+                      <h4 className="font-medium text-red-700">文件已被修改</h4>
+                      <p className="text-sm text-red-600 mt-1">
+                        检测到文件内容发生变化，请检查是否为未授权的修改。
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircleIcon className="h-5 w-5 text-green-500 mr-2" />
+                    <div>
+                      <h4 className="font-medium text-green-700">文件完整性正常</h4>
+                      <p className="text-sm text-green-600 mt-1">
+                        文件内容未发生变化，哈希值保持一致。
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+              <button
+                onClick={() => handleCopyHash(files[selectedFile].hash)}
+                className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md"
+                title="复制哈希值"
+              >
+                <ClipboardIcon className="h-4 w-4 mr-1" />
+                {copySuccess ? '已复制' : '复制哈希值'}
+              </button>
+            </div>
           </div>
         </div>
-
-        {/* 哈希函数可视化部分 */}
-        <HashVisualization />
       </div>
     </div>
   );
