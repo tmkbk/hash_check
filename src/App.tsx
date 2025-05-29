@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Navigation from './components/Navigation';
-import HashVisualization from './components/HashVisualization';
+import HashVisualization from './components/HashVisualization/index';
 import TamperDemo from './components/TamperDemo';
 
 export default function App() {

@@ -23,20 +23,7 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
-interface HashBit {
-  value: string;
-  changed: boolean;
-}
-
-interface DemoExample {
-  title: string;
-  description: string;
-  input: string;
-  animation?: {
-    sequence: string[];
-    interval: number;
-  };
-}
+import { HashBit, DemoExample } from '../types/hash';
 
 const INTERACTIVE_DEMOS: DemoExample[] = [
   {
