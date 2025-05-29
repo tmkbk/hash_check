@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { HashService, HashResult } from '../utils/hashUtils';
+import { HashService } from '../utils/hashUtils';
 import NotificationService from '../utils/notificationService';
 import {
   ChartBarIcon,
@@ -571,14 +571,11 @@ export default function HashVisualization() {
   const [previousHash, setPreviousHash] = useState<string>('');
   const [currentHash, setCurrentHash] = useState<string>('');
   const [hashBits, setHashBits] = useState<HashBit[]>([]);
-  const [avalancheEffect, setAvalancheEffect] = useState(0);
   const [selectedDemo, setSelectedDemo] = useState<number | null>(null);
   const [showBinaryView, setShowBinaryView] = useState(false);
   const [animateChange, setAnimateChange] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [animationIndex, setAnimationIndex] = useState(0);
-  const [showTutorial, setShowTutorial] = useState(false);
-  const [showStats, setShowStats] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
   const [inputCopySuccess, setInputCopySuccess] = useState(false);
   const [comparisonCopySuccess, setComparisonCopySuccess] = useState(false);
@@ -597,10 +594,6 @@ export default function HashVisualization() {
   const [highlightedBits, setHighlightedBits] = useState<number[]>([]);
   const [comparisonHash, setComparisonHash] = useState<string>('');
   const [hashComparison, setHashComparison] = useState<HashComparison | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [processingFiles, setProcessingFiles] = useState(false);
-  const [processProgress, setProcessProgress] = useState(0);
 
   const calculateHash = useCallback(async (text: string) => {
     try {
@@ -613,9 +606,6 @@ export default function HashVisualization() {
           changed: char !== previousHash[i]
         }));
         setHashBits(changes);
-
-        const changedBits = changes.filter(bit => bit.changed).length;
-        setAvalancheEffect((changedBits / result.hash.length) * 100);
 
         setTimeout(() => setAnimateChange(false), 500);
       } else {
@@ -714,18 +704,6 @@ export default function HashVisualization() {
     return { distribution, zeros, ones, entropy };
   }, [currentHash]);
 
-  // 动画速度配置
-  const speedConfig = {
-    slow: 2000,
-    normal: 1500,
-    fast: 800
-  };
-
-  // 添加动画控制函数
-  const handleSpeedChange = (speed: AnimationState['speed']) => {
-    setAnimationState(prev => ({ ...prev, speed }));
-  };
-
   // 处理位模式高亮
   const handleBitHighlight = (index: number) => {
     setHighlightedBits(prev =>
@@ -818,55 +796,9 @@ export default function HashVisualization() {
     setComparisonText(tempText);
   };
 
-  // 文件拖放处理函数
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const files = Array.from(e.dataTransfer.files);
-    handleFiles(files);
-  };
-
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
-      handleFiles(files);
-    }
-  };
-
-  const handleFiles = async (files: File[]) => {
-    try {
-      setProcessingFiles(true);
-      setSelectedFiles(files);
-
-      const results = await HashService.calculateBatchFiles(
-        files,
-        { algorithm: 'sha256' },
-        (progress) => setProcessProgress(progress)
-      );
-
-      // 如果只有一个文件，直接显示其哈希值
-      if (results.length === 1) {
-        setCurrentHash(results[0].hash);
-      }
-
-      NotificationService.success(`成功处理 ${results.length} 个文件`);
-    } catch (error) {
-      NotificationService.error('处理文件时发生错误');
-    } finally {
-      setProcessingFiles(false);
-      setProcessProgress(0);
-    }
+  // 添加动画控制函数
+  const handleSpeedChange = (speed: AnimationState['speed']) => {
+    setAnimationState(prev => ({ ...prev, speed }));
   };
 
   // 使用 useMemo 缓存计算结果

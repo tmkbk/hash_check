@@ -81,10 +81,6 @@ export default function TamperDemo() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showTestVectors, setShowTestVectors] = useState(false);
-  const [testVectors, setTestVectors] = useState<{
-    original: { input: string; hash: string };
-    variants: Array<{ input: string; hash: string; description: string }>;
-  } | null>(null);
 
   const calculateHash = useCallback(async (content: string) => {
     const result = await HashService.calculateTextHash(content, { algorithm });
@@ -150,14 +146,6 @@ export default function TamperDemo() {
       }));
       setHashDiffs(diffs);
     }
-  };
-
-  const generateTestVectors = async () => {
-    const vectors = await HashService.generateTestVectors(
-      files[selectedFile].content,
-      algorithm
-    );
-    setTestVectors(vectors);
   };
 
   const resetFile = (index: number) => {
@@ -352,26 +340,11 @@ export default function TamperDemo() {
                 </div>
               </div>
 
-              {showTestVectors && testVectors && (
+              {showTestVectors && (
                 <div className="mt-4">
                   <h4 className="text-sm font-medium mb-3">测试向量</h4>
                   <div className="space-y-2">
-                    {testVectors.variants.map((variant, index) => (
-                      <div key={index} className="bg-gray-50 p-3 rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">{variant.description}</span>
-                          <span className="text-xs text-gray-500">
-                            变化率: {
-                              HashService.compareHashes(testVectors.original.hash, variant.hash)
-                                .diffPercentage.toFixed(1)
-                            }%
-                          </span>
-                        </div>
-                        <div className="mt-1 text-xs font-mono text-gray-600 break-all">
-                          {variant.hash}
-                        </div>
-                      </div>
-                    ))}
+                    {/* testVectors content would be populated here */}
                   </div>
                 </div>
               )}
