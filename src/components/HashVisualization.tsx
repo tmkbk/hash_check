@@ -16,7 +16,7 @@ import {
   SparklesIcon,
   CubeTransparentIcon,
   DocumentChartBarIcon,
-  CursorArrowRaysIcon
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 
 interface HashBit {
@@ -131,6 +131,41 @@ interface AnimationState {
 // 添加全局按钮基础样式
 const buttonBaseStyle = "focus:outline-none focus:ring-0";
 
+// 添加下拉框基础样式
+const selectBaseStyle = `
+  ${buttonBaseStyle}
+  appearance-none
+  bg-white
+  border border-gray-200
+  text-gray-700
+  px-3 py-1.5
+  pr-8
+  rounded-md
+  cursor-pointer
+  transition-all
+  hover:border-blue-300
+  focus:border-blue-400
+  disabled:opacity-50
+  disabled:cursor-not-allowed
+  bg-[url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20"><path stroke="%236B7280" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M6 8l4 4 4-4"/></svg>')] 
+  bg-[length:20px_20px]
+  bg-no-repeat
+  bg-[center_right_0.5rem]
+`;
+
+// 添加复制提示基础样式
+const copySuccessStyle = `
+  absolute right-full top-1/2 -translate-y-1/2 mr-2
+  flex items-center
+  bg-green-50 text-green-600
+  border border-green-200
+  rounded-md px-2 py-1
+  text-xs
+  shadow-sm
+  whitespace-nowrap
+  z-10
+`;
+
 export default function HashVisualization() {
   const [inputText, setInputText] = useState('Hello');
   const [previousHash, setPreviousHash] = useState<string>('');
@@ -145,7 +180,9 @@ export default function HashVisualization() {
   const [showTutorial, setShowTutorial] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [showFullscreen, setShowFullscreen] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [inputCopySuccess, setInputCopySuccess] = useState(false);
+  const [comparisonCopySuccess, setComparisonCopySuccess] = useState(false);
+  const [hashCopySuccess, setHashCopySuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<'visualization' | 'analysis' | 'tutorial'>('visualization');
   const [showAdvancedStats, setShowAdvancedStats] = useState(false);
   const [animationState, setAnimationState] = useState<AnimationState>({
@@ -239,10 +276,15 @@ export default function HashVisualization() {
     ).join('');
   };
 
-  const handleCopyHash = () => {
-    navigator.clipboard.writeText(currentHash);
-    setCopySuccess(true);
-    setTimeout(() => setCopySuccess(false), 2000);
+  // 统一的复制处理函数
+  const handleCopy = async (text: string, setSuccess: (success: boolean) => void) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 2000);
+    } catch (err) {
+      console.error('复制失败:', err);
+    }
   };
 
   const hashStats = useMemo((): HashStats => {
@@ -441,11 +483,11 @@ export default function HashVisualization() {
                     <select
                       value={animationState.speed}
                       onChange={(e) => handleSpeedChange(e.target.value as AnimationState['speed'])}
-                      className={`${buttonBaseStyle} text-sm border rounded-md px-2 py-1`}
+                      className={`${selectBaseStyle} min-w-[80px] text-sm`}
                     >
-                      <option value="slow">慢速</option>
-                      <option value="normal">正常</option>
-                      <option value="fast">快速</option>
+                      <option value="slow" className="py-1">慢速</option>
+                      <option value="normal" className="py-1">正常</option>
+                      <option value="fast" className="py-1">快速</option>
                     </select>
                   </div>
                 )}
@@ -466,11 +508,18 @@ export default function HashVisualization() {
                 placeholder="输入任意文本..."
               />
               <button
-                onClick={() => navigator.clipboard.writeText(inputText)}
-                className={`${buttonBaseStyle} absolute right-2 top-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors`}
+                onClick={() => handleCopy(inputText, setInputCopySuccess)}
+                className={`${buttonBaseStyle} absolute right-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors group`}
+                style={{ top: 15 }}
                 title="复制输入文本"
               >
-                <ClipboardIcon className="h-4 w-4" />
+                <ClipboardIcon className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                {inputCopySuccess && (
+                  <span className={copySuccessStyle}>
+                    <CheckCircleIcon className="h-3 w-3 mr-1" />
+                    已复制
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -497,12 +546,19 @@ export default function HashVisualization() {
                 disabled={!showComparison}
               />
               <button
-                onClick={() => navigator.clipboard.writeText(comparisonText)}
-                className={`${buttonBaseStyle} absolute right-2 top-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors`}
+                onClick={() => handleCopy(comparisonText, setComparisonCopySuccess)}
+                className={`${buttonBaseStyle} absolute right-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors group`}
+                style={{ top: 15 }}
                 title="复制对比文本"
                 disabled={!showComparison}
               >
-                <ClipboardIcon className="h-4 w-4" />
+                <ClipboardIcon className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                {comparisonCopySuccess && (
+                  <span className={copySuccessStyle}>
+                    <CheckCircleIcon className="h-3 w-3 mr-1" />
+                    已复制
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -542,13 +598,15 @@ export default function HashVisualization() {
               ))}
             </div>
             <button
-              onClick={handleCopyHash}
-              className={`${buttonBaseStyle} absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors group`}
+              onClick={() => handleCopy(currentHash, setHashCopySuccess)}
+              className={`${buttonBaseStyle} absolute right-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors group`}
+              style={{ top: 15 }}
               title="复制哈希值"
             >
               <ClipboardIcon className="h-4 w-4 group-hover:scale-110 transition-transform" />
-              {copySuccess && (
-                <span className="absolute right-full mr-2 whitespace-nowrap text-xs text-green-600 bg-white/90 px-2 py-1 rounded">
+              {hashCopySuccess && (
+                <span className={copySuccessStyle}>
+                  <CheckCircleIcon className="h-3 w-3 mr-1" />
                   已复制
                 </span>
               )}
@@ -676,10 +734,30 @@ export default function HashVisualization() {
             <div className="space-y-6">
               {/* 基本统计 */}
               <div className="bg-white rounded-lg shadow-sm p-6">
-                <h3 className="font-medium mb-4 flex items-center">
-                  <ChartBarIcon className="h-5 w-5 mr-2" />
-                  基本统计
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-medium flex items-center">
+                    <ChartBarIcon className="h-5 w-5 mr-2" />
+                    基本统计
+                  </h3>
+                  <div className="flex items-center space-x-3">
+                    <select
+                      value={showBinaryView ? 'binary' : 'hex'}
+                      onChange={(e) => setShowBinaryView(e.target.value === 'binary')}
+                      className={`${selectBaseStyle} min-w-[100px] text-sm`}
+                    >
+                      <option value="hex" className="py-1">十六进制</option>
+                      <option value="binary" className="py-1">二进制</option>
+                    </select>
+                    <select
+                      value={showAdvancedStats ? 'advanced' : 'basic'}
+                      onChange={(e) => setShowAdvancedStats(e.target.value === 'advanced')}
+                      className={`${selectBaseStyle} min-w-[100px] text-sm`}
+                    >
+                      <option value="basic" className="py-1">基础统计</option>
+                      <option value="advanced" className="py-1">高级统计</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="bg-gray-50 p-4 rounded-lg">
                     <h4 className="text-sm font-medium text-gray-600">哈希长度</h4>
