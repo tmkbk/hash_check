@@ -3,6 +3,7 @@ import { HashService, HashConfig } from '../utils/hashUtils';
 import NotificationService from '../utils/notificationService';
 import { DocumentDuplicateIcon, ArrowPathIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 import HashComparison from './HashComparison';
+import HashVisualization from './HashVisualization';
 
 const DEMO_TEXTS = [
   {
@@ -86,155 +87,140 @@ export default function TamperDemo() {
   };
 
   return (
-    <div className="space-y-6 p-4 bg-white rounded-lg shadow">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">篡改检测演示</h2>
-        <div className="flex items-center space-x-4">
-          <select
-            value={algorithm}
-            onChange={(e) => setAlgorithm(e.target.value as HashConfig['algorithm'])}
-            className="border rounded px-3 py-1"
-          >
-            <option value="md5">MD5</option>
-            <option value="sha1">SHA-1</option>
-            <option value="sha256">SHA-256</option>
-            <option value="sha512">SHA-512</option>
-          </select>
-          <button
-            onClick={() => setShowComparison(!showComparison)}
-            className="text-sm text-blue-600 hover:text-blue-800"
-          >
-            {showComparison ? '隐藏详细比较' : '显示详细比较'}
-          </button>
-        </div>
-      </div>
-
-      {/* 示例选择器 */}
-      <div className="flex space-x-2 overflow-x-auto pb-2">
-        {DEMO_TEXTS.map((demo, index) => (
-          <button
-            key={index}
-            onClick={() => handleDemoSelect(index)}
-            className={`px-4 py-2 rounded-full text-sm whitespace-nowrap ${selectedDemo === index
-              ? 'bg-blue-100 text-blue-800'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-          >
-            {demo.title}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* 原始文本区域 */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="block font-medium">原始文本</label>
-            <LockClosedIcon className="h-4 w-4 text-gray-400" />
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 篡改检测部分 */}
+        <div className="p-4 bg-white rounded-lg shadow">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold">篡改检测演示</h2>
+            <div className="flex items-center space-x-4">
+              <select
+                value={algorithm}
+                onChange={(e) => setAlgorithm(e.target.value as HashConfig['algorithm'])}
+                className="border rounded px-3 py-1"
+              >
+                <option value="md5">MD5</option>
+                <option value="sha1">SHA-1</option>
+                <option value="sha256">SHA-256</option>
+                <option value="sha512">SHA-512</option>
+              </select>
+              <button
+                onClick={() => setShowComparison(!showComparison)}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                {showComparison ? '隐藏详细比较' : '显示详细比较'}
+              </button>
+            </div>
           </div>
-          <textarea
-            value={originalText}
-            onChange={(e) => setOriginalText(e.target.value)}
-            className="w-full h-32 p-2 border rounded"
-            placeholder="输入原始文本..."
-          />
-          <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded">
-            <span className="text-sm font-mono break-all flex-1">
-              {originalHash}
-            </span>
-            <button
-              onClick={() => handleCopyHash(originalHash)}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="复制哈希值"
-            >
-              <DocumentDuplicateIcon className="h-4 w-4" />
-            </button>
+
+          {/* 示例选择器 */}
+          <div className="flex space-x-2 overflow-x-auto pb-2 mb-4">
+            {DEMO_TEXTS.map((demo, index) => (
+              <button
+                key={index}
+                onClick={() => handleDemoSelect(index)}
+                className={`px-4 py-2 rounded-full text-sm whitespace-nowrap ${selectedDemo === index
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+              >
+                {demo.title}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4">
+            {/* 原始文本区域 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block font-medium">原始文本</label>
+                <LockClosedIcon className="h-4 w-4 text-gray-400" />
+              </div>
+              <textarea
+                value={originalText}
+                onChange={(e) => setOriginalText(e.target.value)}
+                className="w-full h-32 p-2 border rounded"
+                placeholder="输入原始文本..."
+              />
+              <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded">
+                <span className="text-sm font-mono break-all flex-1">
+                  {originalHash}
+                </span>
+                <button
+                  onClick={() => handleCopyHash(originalHash)}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  title="复制哈希值"
+                >
+                  <DocumentDuplicateIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* 修改后文本区域 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block font-medium">修改后文本</label>
+                <button
+                  onClick={handleReset}
+                  className="flex items-center text-sm text-blue-600 hover:text-blue-800"
+                  title="重置为原始文本"
+                >
+                  <ArrowPathIcon className="h-4 w-4 mr-1" />
+                  重置
+                </button>
+              </div>
+              <textarea
+                value={modifiedText}
+                onChange={(e) => setModifiedText(e.target.value)}
+                className="w-full h-32 p-2 border rounded"
+                placeholder="修改文本以查看哈希值变化..."
+              />
+              <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded">
+                <span
+                  className={`text-sm font-mono break-all flex-1 ${originalHash !== modifiedHash ? 'text-red-600' : ''
+                    }`}
+                >
+                  {modifiedHash}
+                </span>
+                <button
+                  onClick={() => handleCopyHash(modifiedHash)}
+                  className="p-1 hover:bg-gray-200 rounded"
+                  title="复制哈希值"
+                >
+                  <DocumentDuplicateIcon className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 哈希值比较 */}
+          {showComparison && (
+            <div className="border-t pt-4 mt-4">
+              <h3 className="font-medium mb-4">哈希值详细比较</h3>
+              <HashComparison
+                originalHash={originalHash}
+                modifiedHash={modifiedHash}
+              />
+            </div>
+          )}
+
+          {/* 检测结果 */}
+          <div className="mt-4 bg-gray-50 p-4 rounded">
+            <h3 className="font-medium mb-2">检测结果</h3>
+            {originalHash === modifiedHash ? (
+              <div className="text-green-600">
+                ✓ 文本未被篡改（哈希值相同）
+              </div>
+            ) : (
+              <div className="text-red-600">
+                ⚠ 检测到文本被篡改（哈希值不同）
+              </div>
+            )}
           </div>
         </div>
 
-        {/* 修改后文本区域 */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="block font-medium">修改后文本</label>
-            <button
-              onClick={handleReset}
-              className="flex items-center text-sm text-blue-600 hover:text-blue-800"
-              title="重置为原始文本"
-            >
-              <ArrowPathIcon className="h-4 w-4 mr-1" />
-              重置
-            </button>
-          </div>
-          <textarea
-            value={modifiedText}
-            onChange={(e) => setModifiedText(e.target.value)}
-            className="w-full h-32 p-2 border rounded"
-            placeholder="修改文本以查看哈希值变化..."
-          />
-          <div className="flex items-center space-x-2 bg-gray-50 p-2 rounded">
-            <span className={`text-sm font-mono break-all flex-1 ${originalHash !== modifiedHash ? 'text-red-600' : ''
-              }`}>
-              {modifiedHash}
-            </span>
-            <button
-              onClick={() => handleCopyHash(modifiedHash)}
-              className="p-1 hover:bg-gray-200 rounded"
-              title="复制哈希值"
-            >
-              <DocumentDuplicateIcon className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 哈希值比较 */}
-      {showComparison && (
-        <div className="border-t pt-4">
-          <h3 className="font-medium mb-4">哈希值详细比较</h3>
-          <HashComparison
-            originalHash={originalHash}
-            modifiedHash={modifiedHash}
-          />
-        </div>
-      )}
-
-      {/* 差异对比区域 */}
-      <div className="space-y-2">
-        <h3 className="font-medium">文本差异</h3>
-        <div className="bg-gray-50 p-4 rounded font-mono text-sm">
-          {renderDiff()}
-        </div>
-      </div>
-
-      {/* 检测结果 */}
-      <div className="bg-gray-50 p-4 rounded">
-        <h3 className="font-medium mb-2">检测结果</h3>
-        {originalHash === modifiedHash ? (
-          <div className="text-green-600">
-            ✓ 文本未被篡改（哈希值相同）
-          </div>
-        ) : (
-          <div className="text-red-600">
-            ⚠ 检测到文本被篡改（哈希值不同）
-          </div>
-        )}
-      </div>
-
-      {/* 教学说明 */}
-      <div className="bg-blue-50 p-4 rounded">
-        <h3 className="font-medium mb-2">原理说明</h3>
-        <div className="text-sm text-gray-600 space-y-2">
-          <p>哈希函数的特性：</p>
-          <ul className="list-disc list-inside space-y-1">
-            <li>输入内容的微小改变都会导致哈希值的显著变化</li>
-            <li>相同的输入总是产生相同的哈希值</li>
-            <li>不同的输入极难产生相同的哈希值（抗碰撞性）</li>
-            <li>无法从哈希值反推出原始内容（单向性）</li>
-          </ul>
-          <p className="mt-4 text-sm text-gray-500">
-            提示：尝试使用上方的示例来观察不同类型的修改如何影响哈希值
-          </p>
-        </div>
+        {/* 哈希函数可视化部分 */}
+        <HashVisualization />
       </div>
     </div>
   );
