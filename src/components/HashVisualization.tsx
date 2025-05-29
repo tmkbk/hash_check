@@ -138,6 +138,7 @@ interface HashComparison {
   diffBits: number;
   diffPercentage: number;
   entropy: number;
+  avalancheEffect: number; // 添加雪崩效应属性
 }
 
 // 添加全局按钮基础样式
@@ -209,6 +210,12 @@ export default function HashVisualization() {
   const [highlightedBits, setHighlightedBits] = useState<number[]>([]);
   const [comparisonHash, setComparisonHash] = useState<string>('');
   const [hashComparison, setHashComparison] = useState<HashComparison | null>(null);
+
+  // 添加文件处理相关的状态
+  const [isDragging, setIsDragging] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [processingFiles, setProcessingFiles] = useState(false);
+  const [processProgress, setProcessProgress] = useState(0);
 
   const calculateHash = useCallback(async (text: string) => {
     try {
@@ -368,49 +375,55 @@ export default function HashVisualization() {
       try {
         const result = await HashService.calculateTextHash(comparisonText, { algorithm: 'sha256' });
         setComparisonHash(result.hash);
+
+        // 计算输入文本的差异位数
+        const inputDiffBits = Array.from(inputText).reduce((count, char, i) => {
+          return count + (char !== comparisonText[i] ? 1 : 0);
+        }, 0);
+
+        // 计算哈希值的差异位数（二进制级别）
+        const mainBinary = hexToBinary(currentHash);
+        const compBinary = hexToBinary(result.hash);
+        const hashDiffBits = mainBinary.split('').reduce((count, bit, i) => {
+          return count + (bit !== compBinary[i] ? 1 : 0);
+        }, 0);
+
+        // 计算雪崩效应：哈希值变化位数与输入变化位数的比率
+        const avalancheEffect = inputDiffBits > 0 ? (hashDiffBits / (mainBinary.length)) * 100 : 0;
+
+        const diffPositions: number[] = [];
+        let diffCount = 0;
+        let diffBits = 0;
+
+        for (let i = 0; i < currentHash.length; i++) {
+          if (currentHash[i] !== result.hash[i]) {
+            diffPositions.push(i);
+            diffCount++;
+
+            const bin1 = parseInt(currentHash[i], 16).toString(2).padStart(4, '0');
+            const bin2 = parseInt(result.hash[i], 16).toString(2).padStart(4, '0');
+            for (let j = 0; j < 4; j++) {
+              if (bin1[j] !== bin2[j]) diffBits++;
+            }
+          }
+        }
+
+        setHashComparison({
+          identical: diffCount === 0,
+          diffCount,
+          diffPositions,
+          diffBits,
+          diffPercentage: (diffBits / (currentHash.length * 4)) * 100,
+          entropy: hashStats.entropy,
+          avalancheEffect
+        });
       } catch (error) {
         console.error('计算对比哈希值时发生错误:', error);
       }
     };
 
     calculateComparisonHash();
-  }, [comparisonText, showComparison]);
-
-  // 计算哈希值差异
-  useEffect(() => {
-    if (!showComparison || !currentHash || !comparisonHash) {
-      setHashComparison(null);
-      return;
-    }
-
-    const diffPositions: number[] = [];
-    let diffCount = 0;
-    let diffBits = 0;
-
-    // 计算十六进制差异
-    for (let i = 0; i < currentHash.length; i++) {
-      if (currentHash[i] !== comparisonHash[i]) {
-        diffPositions.push(i);
-        diffCount++;
-
-        // 计算二进制差异
-        const bin1 = parseInt(currentHash[i], 16).toString(2).padStart(4, '0');
-        const bin2 = parseInt(comparisonHash[i], 16).toString(2).padStart(4, '0');
-        for (let j = 0; j < 4; j++) {
-          if (bin1[j] !== bin2[j]) diffBits++;
-        }
-      }
-    }
-
-    setHashComparison({
-      identical: diffCount === 0,
-      diffCount,
-      diffPositions,
-      diffBits,
-      diffPercentage: (diffBits / (currentHash.length * 4)) * 100,
-      entropy: 0
-    });
-  }, [currentHash, comparisonHash, showComparison]);
+  }, [currentHash, comparisonText, showComparison, inputText, hashStats.entropy]);
 
   // 交换输入文本
   const handleSwapTexts = () => {
@@ -419,6 +432,55 @@ export default function HashVisualization() {
     setComparisonText(tempText);
   };
 
+  // 文件拖放处理函数
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    handleFiles(files);
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const files = Array.from(e.target.files);
+      handleFiles(files);
+    }
+  };
+
+  const handleFiles = async (files: File[]) => {
+    try {
+      setProcessingFiles(true);
+      setSelectedFiles(files);
+      
+      const results = await HashService.calculateBatchFiles(
+        files,
+        { algorithm: 'sha256' },
+        (progress) => setProcessProgress(progress)
+      );
+      
+      // 处理结果
+      results.forEach(result => {
+        HistoryService.addToHistory(result);
+      });
+      
+      // 如果只有一个文件，直接显示其哈希值
+      if (results.length === 1) {
+        setCurrentHash(results[0].hash);
+      }
+      
+      NotificationService.success(`成功处理 ${results.length} 个文件`);
+    } catch (error) {
   return (
     <div className={`${showFullscreen ? 'fixed inset-0 z-50 bg-white overflow-auto' : ''}`}>
       {/* 顶部导航栏 */}
@@ -1585,6 +1647,60 @@ export default function HashVisualization() {
                     </div>
                   </div>
                 </div>
+
+                {/* 对比雪崩效应 */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="text-sm font-medium mb-3">雪崩效应分析</h4>
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">输入文本差异</span>
+                      <span className="text-sm font-mono">
+                        {Array.from(inputText).reduce((count, char, i) =>
+                          count + (char !== comparisonText[i] ? 1 : 0), 0)} 位
+                      </span>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm text-gray-600">哈希值变化率</span>
+                        <span className="text-sm font-mono">
+                          {(hashComparison?.avalancheEffect || 0).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${(hashComparison?.avalancheEffect || 0) > 45 ? 'bg-green-500' : 'bg-blue-500'
+                            }`}
+                          style={{ width: `${hashComparison?.avalancheEffect || 0}%` }}
+                        />
+                      </div>
+                      {(hashComparison?.avalancheEffect || 0) > 45 && (
+                        <p className="text-xs text-green-600 mt-1">
+                          达到理想的雪崩效应（&gt;45%）
+                        </p>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div className="text-center">
+                        <div className="text-sm font-medium text-gray-600">变化位置分布</div>
+                        <div className="text-lg font-mono mt-1">
+                          前32位: {hashComparison?.diffPositions.filter(pos => pos < 32).length || 0}
+                          <br />
+                          后32位: {hashComparison?.diffPositions.filter(pos => pos >= 32).length || 0}
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-sm font-medium text-gray-600">最长连续变化</div>
+                        <div className="text-lg font-mono mt-1">
+                          {hashComparison?.diffPositions.reduce((max, pos, i, arr) => {
+                            if (i === 0) return 1;
+                            const curr = pos - arr[i - 1] === 1 ? max + 1 : 1;
+                            return Math.max(max, curr);
+                          }, 1) || 0} 位
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1659,59 +1775,6 @@ export default function HashVisualization() {
           {/* 右侧内容（对比模式） */}
           {showComparison && (
             <div className="space-y-6">
-              {activeTab === 'visualization' && (
-                <>
-                  {/* 对比雪崩效应展示 */}
-                  <div className="bg-white rounded-lg shadow-sm p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-medium flex items-center">
-                        <ChartBarIcon className="h-5 w-5 mr-2" />
-                        对比雪崩效应
-                      </h3>
-                      <span className="text-sm font-medium">
-                        变化率: {avalancheEffect.toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ${avalancheEffect > 45 ? 'bg-green-600' : 'bg-blue-600'}`}
-                        style={{ width: `${avalancheEffect}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* 对比分布统计 */}
-                  <div className="bg-white rounded-lg shadow-sm p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-medium flex items-center">
-                        <ChartPieIcon className="h-5 w-5 mr-2" />
-                        对比分布
-                      </h3>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-gray-50 p-3 rounded-lg text-center">
-                        <div className="text-sm font-medium text-gray-600">1位数量</div>
-                        <div className="text-lg font-mono mt-1">
-                          {comparisonHash?.split('').reduce((acc, char) => {
-                            const bin = parseInt(char, 16).toString(2).padStart(4, '0');
-                            return acc + bin.split('1').length - 1;
-                          }, 0) || 0}
-                        </div>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-lg text-center">
-                        <div className="text-sm font-medium text-gray-600">0位数量</div>
-                        <div className="text-lg font-mono mt-1">
-                          {comparisonHash?.split('').reduce((acc, char) => {
-                            const bin = parseInt(char, 16).toString(2).padStart(4, '0');
-                            return acc + bin.split('0').length - 1;
-                          }, 0) || 0}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-
               {activeTab === 'analysis' && (
                 <div className="space-y-6">
                   {/* 对比基本统计 */}
@@ -1874,6 +1937,60 @@ export default function HashVisualization() {
                           <div className="text-sm font-medium text-gray-600">熵值差异</div>
                           <div className="text-lg font-mono mt-1">
                             {Math.abs(hashStats.entropy - (hashComparison?.entropy || 0)).toFixed(2)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 对比雪崩效应 */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium mb-3">雪崩效应分析</h4>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">输入文本差异</span>
+                        <span className="text-sm font-mono">
+                          {Array.from(inputText).reduce((count, char, i) =>
+                            count + (char !== comparisonText[i] ? 1 : 0), 0)} 位
+                        </span>
+                      </div>
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm text-gray-600">哈希值变化率</span>
+                          <span className="text-sm font-mono">
+                            {(hashComparison?.avalancheEffect || 0).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full transition-all duration-300 ${(hashComparison?.avalancheEffect || 0) > 45 ? 'bg-green-500' : 'bg-blue-500'
+                              }`}
+                            style={{ width: `${hashComparison?.avalancheEffect || 0}%` }}
+                          />
+                        </div>
+                        {(hashComparison?.avalancheEffect || 0) > 45 && (
+                          <p className="text-xs text-green-600 mt-1">
+                            达到理想的雪崩效应（&gt;45%）
+                          </p>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 pt-2">
+                        <div className="text-center">
+                          <div className="text-sm font-medium text-gray-600">变化位置分布</div>
+                          <div className="text-lg font-mono mt-1">
+                            前32位: {hashComparison?.diffPositions.filter(pos => pos < 32).length || 0}
+                            <br />
+                            后32位: {hashComparison?.diffPositions.filter(pos => pos >= 32).length || 0}
+                          </div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-sm font-medium text-gray-600">最长连续变化</div>
+                          <div className="text-lg font-mono mt-1">
+                            {hashComparison?.diffPositions.reduce((max, pos, i, arr) => {
+                              if (i === 0) return 1;
+                              const curr = pos - arr[i - 1] === 1 ? max + 1 : 1;
+                              return Math.max(max, curr);
+                            }, 1) || 0} 位
                           </div>
                         </div>
                       </div>
