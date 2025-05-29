@@ -12,7 +12,11 @@ import {
   ChartPieIcon,
   TableCellsIcon,
   ArrowsPointingOutIcon,
-  InformationCircleIcon
+  InformationCircleIcon,
+  SparklesIcon,
+  CubeTransparentIcon,
+  DocumentChartBarIcon,
+  CursorArrowRaysIcon
 } from '@heroicons/react/24/outline';
 
 interface HashBit {
@@ -80,6 +84,34 @@ const INTERACTIVE_DEMOS: DemoExample[] = [
     title: '长文本测试',
     description: '验证无论输入多长，输出始终是固定长度',
     input: '这是一段很长的文本，用来测试哈希函数的特性。无论输入文本有多长，哈希值的长度都是固定的。这就是哈希函数的一个重要特性。'
+  },
+  {
+    title: '特殊字符',
+    description: '测试特殊字符和Unicode字符对哈希值的影响',
+    input: '你好，世界！@#¥%……&*',
+    animation: {
+      sequence: [
+        '你好，世界！@#¥%……&*',
+        'Hello, World!@#$%^&*',
+        '🌍🌎🌏👋😊',
+        '你好，世界！@#¥%……&*'
+      ],
+      interval: 2000
+    }
+  },
+  {
+    title: '零值测试',
+    description: '测试全零输入的哈希分布特性',
+    input: '0000000000',
+    animation: {
+      sequence: [
+        '0000000000',
+        '1111111111',
+        'aaaaaaaaaa',
+        '0000000000'
+      ],
+      interval: 1500
+    }
   }
 ];
 
@@ -89,6 +121,15 @@ interface HashStats {
   ones: number;
   entropy: number;
 }
+
+interface AnimationState {
+  isPlaying: boolean;
+  speed: 'slow' | 'normal' | 'fast';
+  currentStep: number;
+}
+
+// 添加全局按钮基础样式
+const buttonBaseStyle = "focus:outline-none focus:ring-0";
 
 export default function HashVisualization() {
   const [inputText, setInputText] = useState('Hello');
@@ -107,6 +148,15 @@ export default function HashVisualization() {
   const [copySuccess, setCopySuccess] = useState(false);
   const [activeTab, setActiveTab] = useState<'visualization' | 'analysis' | 'tutorial'>('visualization');
   const [showAdvancedStats, setShowAdvancedStats] = useState(false);
+  const [animationState, setAnimationState] = useState<AnimationState>({
+    isPlaying: false,
+    speed: 'normal',
+    currentStep: 0
+  });
+  const [showComparison, setShowComparison] = useState(false);
+  const [comparisonText, setComparisonText] = useState('');
+  const [showVisualPatterns, setShowVisualPatterns] = useState(false);
+  const [highlightedBits, setHighlightedBits] = useState<number[]>([]);
 
   const calculateHash = useCallback(async (text: string) => {
     try {
@@ -214,6 +264,41 @@ export default function HashVisualization() {
     return { distribution, zeros, ones, entropy };
   }, [currentHash]);
 
+  // 动画速度配置
+  const speedConfig = {
+    slow: 2000,
+    normal: 1500,
+    fast: 800
+  };
+
+  // 添加动画控制函数
+  const handleSpeedChange = (speed: AnimationState['speed']) => {
+    setAnimationState(prev => ({ ...prev, speed }));
+  };
+
+  // 处理位模式高亮
+  const handleBitHighlight = (index: number) => {
+    setHighlightedBits(prev =>
+      prev.includes(index) ? prev.filter(i => i !== index) : [...prev, index]
+    );
+  };
+
+  // 生成视觉模式
+  const generateVisualPattern = (hash: string): string[][] => {
+    const pattern: string[][] = [];
+    const binaryHash = hexToBinary(hash);
+
+    // 创建8x8的视觉模式
+    for (let i = 0; i < 8; i++) {
+      pattern[i] = [];
+      for (let j = 0; j < 8; j++) {
+        const index = i * 8 + j;
+        pattern[i][j] = binaryHash[index] || '0';
+      }
+    }
+    return pattern;
+  };
+
   return (
     <div className={`${showFullscreen ? 'fixed inset-0 z-50 bg-white overflow-auto' : ''}`}>
       {/* 顶部导航栏 */}
@@ -227,7 +312,7 @@ export default function HashVisualization() {
             <div className="flex space-x-2">
               <button
                 onClick={() => setActiveTab('visualization')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'visualization'
+                className={`${buttonBaseStyle} px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'visualization'
                   ? 'bg-blue-100 text-blue-700'
                   : 'text-gray-600 hover:bg-gray-100'
                   }`}
@@ -236,7 +321,7 @@ export default function HashVisualization() {
               </button>
               <button
                 onClick={() => setActiveTab('analysis')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'analysis'
+                className={`${buttonBaseStyle} px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'analysis'
                   ? 'bg-blue-100 text-blue-700'
                   : 'text-gray-600 hover:bg-gray-100'
                   }`}
@@ -245,7 +330,7 @@ export default function HashVisualization() {
               </button>
               <button
                 onClick={() => setActiveTab('tutorial')}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'tutorial'
+                className={`${buttonBaseStyle} px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === 'tutorial'
                   ? 'bg-blue-100 text-blue-700'
                   : 'text-gray-600 hover:bg-gray-100'
                   }`}
@@ -255,14 +340,14 @@ export default function HashVisualization() {
               <div className="border-l mx-2" />
               <button
                 onClick={() => setShowBinaryView(!showBinaryView)}
-                className={`px-3 py-1 rounded-md text-sm ${showBinaryView ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'
+                className={`${buttonBaseStyle} px-3 py-1 rounded-md text-sm ${showBinaryView ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'
                   }`}
               >
                 <TableCellsIcon className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setShowFullscreen(!showFullscreen)}
-                className="px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md"
+                className={`${buttonBaseStyle} px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded-md`}
               >
                 <ArrowsPointingOutIcon className="h-4 w-4" />
               </button>
@@ -275,69 +360,152 @@ export default function HashVisualization() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* 预设示例区域 */}
         <div className="mb-6">
-          <h3 className="text-sm font-medium mb-3">预设示例</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-medium flex items-center">
+              <SparklesIcon className="h-5 w-5 mr-2 text-blue-600" />
+              预设示例
+            </h3>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowComparison(!showComparison)}
+                className={`${buttonBaseStyle} px-3 py-1 text-sm rounded-md transition-colors ${showComparison ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'
+                  }`}
+              >
+                <DocumentChartBarIcon className="h-4 w-4 inline mr-1" />
+                对比模式
+              </button>
+              <button
+                onClick={() => setShowVisualPatterns(!showVisualPatterns)}
+                className={`${buttonBaseStyle} px-3 py-1 text-sm rounded-md transition-colors ${showVisualPatterns ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'
+                  }`}
+              >
+                <CubeTransparentIcon className="h-4 w-4 inline mr-1" />
+                可视化模式
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {INTERACTIVE_DEMOS.map((demo, index) => (
               <button
                 key={index}
                 onClick={() => handleDemoSelect(index)}
-                className={`p-4 rounded-lg text-left transition-all ${selectedDemo === index
+                className={`${buttonBaseStyle} group h-32 p-4 rounded-lg text-left transition-all transform hover:scale-102 hover:shadow-md ${selectedDemo === index
                   ? 'bg-blue-50 border-blue-200 border shadow-sm'
                   : 'bg-gray-50 hover:bg-gray-100 border border-transparent'
                   }`}
               >
-                <h4 className="text-sm font-medium">{demo.title}</h4>
-                <p className="text-xs text-gray-600 mt-1 line-clamp-2">{demo.description}</p>
-                {demo.animation && (
-                  <div className="mt-2 flex items-center text-xs text-blue-600">
-                    <PlayIcon className="h-3 w-3 mr-1" />
-                    支持动画演示
-                  </div>
-                )}
+                <div className="h-full flex flex-col relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent to-blue-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <h4 className="text-sm font-medium relative z-10">{demo.title}</h4>
+                  <p className="text-xs text-gray-600 mt-1 flex-grow line-clamp-2 relative z-10">
+                    {demo.description}
+                  </p>
+                  {demo.animation && (
+                    <div className="mt-2 flex items-center text-xs text-blue-600 relative z-10">
+                      <PlayIcon className="h-3 w-3 mr-1" />
+                      支持动画演示
+                    </div>
+                  )}
+                </div>
               </button>
             ))}
           </div>
         </div>
 
-        {/* 输入区域 */}
-        <div className="bg-white rounded-lg shadow-sm p-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium">输入文本</label>
-            <div className="flex items-center space-x-2">
-              {selectedDemo !== null && INTERACTIVE_DEMOS[selectedDemo].animation && (
+        {/* 输入和对比区域 */}
+        <div className={`grid ${showComparison ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'} gap-6 mb-6 transition-all duration-300`}>
+          {/* 主输入区域 */}
+          <div className="bg-white rounded-lg shadow-sm p-4 space-y-4 w-full">
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium">输入文本</label>
+              <div className="flex items-center space-x-2">
+                {selectedDemo !== null && INTERACTIVE_DEMOS[selectedDemo].animation && (
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={toggleAnimation}
+                      className={`${buttonBaseStyle} flex items-center px-3 py-1 text-sm rounded-md transition-colors ${isAnimating ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                        }`}
+                    >
+                      {isAnimating ? (
+                        <>
+                          <PauseIcon className="h-4 w-4 mr-1" />
+                          暂停
+                        </>
+                      ) : (
+                        <>
+                          <PlayIcon className="h-4 w-4 mr-1" />
+                          播放
+                        </>
+                      )}
+                    </button>
+                    <select
+                      value={animationState.speed}
+                      onChange={(e) => handleSpeedChange(e.target.value as AnimationState['speed'])}
+                      className={`${buttonBaseStyle} text-sm border rounded-md px-2 py-1`}
+                    >
+                      <option value="slow">慢速</option>
+                      <option value="normal">正常</option>
+                      <option value="fast">快速</option>
+                    </select>
+                  </div>
+                )}
                 <button
-                  onClick={toggleAnimation}
-                  className={`flex items-center px-3 py-1 text-sm rounded-md transition-colors ${isAnimating ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'
-                    }`}
+                  onClick={() => setInputText('')}
+                  className={`${buttonBaseStyle} flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md`}
                 >
-                  {isAnimating ? (
-                    <>
-                      <PauseIcon className="h-4 w-4 mr-1" />
-                      暂停
-                    </>
-                  ) : (
-                    <>
-                      <PlayIcon className="h-4 w-4 mr-1" />
-                      播放
-                    </>
-                  )}
+                  <ArrowPathIcon className="h-4 w-4 mr-1" />
+                  清空
                 </button>
-              )}
+              </div>
+            </div>
+            <div className="relative">
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                className={`${buttonBaseStyle} w-full p-3 pr-10 border rounded-md h-32 font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-300`}
+                placeholder="输入任意文本..."
+              />
               <button
-                onClick={() => setInputText('')}
-                className="flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md"
+                onClick={() => navigator.clipboard.writeText(inputText)}
+                className={`${buttonBaseStyle} absolute right-2 top-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors`}
+                title="复制输入文本"
+              >
+                <ClipboardIcon className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* 对比输入区域 */}
+          <div className={`bg-white rounded-lg shadow-sm p-4 space-y-4 transition-all duration-300 w-full ${showComparison ? 'opacity-100 max-h-[500px]' : 'opacity-0 max-h-0 overflow-hidden'
+            }`}>
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium">对比文本</label>
+              <button
+                onClick={() => setComparisonText('')}
+                className={`${buttonBaseStyle} flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md`}
               >
                 <ArrowPathIcon className="h-4 w-4 mr-1" />
                 清空
               </button>
             </div>
+            <div className="relative">
+              <textarea
+                value={comparisonText}
+                onChange={(e) => setComparisonText(e.target.value)}
+                className={`${buttonBaseStyle} w-full p-3 pr-10 border rounded-md h-32 font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-300`}
+                placeholder="输入要对比的文本..."
+                disabled={!showComparison}
+              />
+              <button
+                onClick={() => navigator.clipboard.writeText(comparisonText)}
+                className={`${buttonBaseStyle} absolute right-2 top-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors`}
+                title="复制对比文本"
+                disabled={!showComparison}
+              >
+                <ClipboardIcon className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-          <textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            className="w-full p-3 border rounded-md h-32 font-mono focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
-            placeholder="输入任意文本..."
-          />
         </div>
 
         {/* 哈希值显示区域 */}
@@ -348,37 +516,66 @@ export default function HashVisualization() {
               <h3 className="font-medium">哈希值</h3>
             </div>
             <div className="flex items-center space-x-4">
-              <button
-                onClick={handleCopyHash}
-                className="flex items-center text-sm text-gray-600 hover:text-gray-800"
-                title="复制哈希值"
-              >
-                <ClipboardIcon className="h-4 w-4 mr-1" />
-                {copySuccess ? '已复制' : '复制'}
-              </button>
               <span className="text-sm text-gray-500">
                 长度: {showBinaryView ? currentHash.length * 4 : currentHash.length} {showBinaryView ? '位' : '字符'}
               </span>
             </div>
           </div>
-          <div className={`bg-gray-50 p-4 rounded-lg overflow-x-auto transition-all duration-300 ${animateChange ? 'bg-yellow-50' : ''
+          <div className={`relative bg-gray-50 p-4 rounded-lg overflow-x-auto transition-all duration-300 ${animateChange ? 'bg-yellow-50' : ''
             }`}>
-            <div className="font-mono text-sm flex flex-wrap">
+            <div className="font-mono text-sm flex flex-wrap pr-10">
               {(showBinaryView ? hexToBinary(currentHash) : currentHash).split('').map((bit, index) => (
                 <span
                   key={index}
-                  className={`${hashBits[showBinaryView ? Math.floor(index / 4) : index]?.changed
+                  onClick={() => handleBitHighlight(index)}
+                  className={`cursor-pointer ${hashBits[showBinaryView ? Math.floor(index / 4) : index]?.changed
                     ? 'bg-yellow-200 text-red-600'
-                    : ''
+                    : highlightedBits.includes(index)
+                      ? 'bg-blue-200'
+                      : ''
                     } ${showBinaryView ? 'mx-px' : ''
-                    } transition-colors duration-300 p-1`}
+                    } transition-colors duration-300 p-1 hover:bg-blue-100`}
+                  title={`位置: ${index + 1}`}
                 >
                   {bit}
                 </span>
               ))}
             </div>
+            <button
+              onClick={handleCopyHash}
+              className={`${buttonBaseStyle} absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors group`}
+              title="复制哈希值"
+            >
+              <ClipboardIcon className="h-4 w-4 group-hover:scale-110 transition-transform" />
+              {copySuccess && (
+                <span className="absolute right-full mr-2 whitespace-nowrap text-xs text-green-600 bg-white/90 px-2 py-1 rounded">
+                  已复制
+                </span>
+              )}
+            </button>
           </div>
         </div>
+
+        {/* 可视化模式 */}
+        {showVisualPatterns && (
+          <div className="mt-6 bg-white rounded-lg shadow-sm p-4">
+            <h3 className="text-sm font-medium mb-4 flex items-center">
+              <CubeTransparentIcon className="h-5 w-5 mr-2 text-blue-600" />
+              视觉模式
+            </h3>
+            <div className="grid grid-cols-8 gap-px bg-gray-200 w-64 mx-auto">
+              {generateVisualPattern(currentHash).map((row, i) =>
+                row.map((cell, j) => (
+                  <div
+                    key={`${i}-${j}`}
+                    className={`w-8 h-8 ${cell === '1' ? 'bg-blue-600' : 'bg-white'
+                      } transition-colors duration-300 hover:opacity-75`}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         {/* 标签页内容 */}
         <div className="mt-6">
@@ -476,10 +673,157 @@ export default function HashVisualization() {
           )}
 
           {activeTab === 'analysis' && (
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h3 className="font-medium mb-4">哈希值分析</h3>
-              <div className="space-y-6">
-                {/* 这里可以添加更多的分析内容 */}
+            <div className="space-y-6">
+              {/* 基本统计 */}
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <h3 className="font-medium mb-4 flex items-center">
+                  <ChartBarIcon className="h-5 w-5 mr-2" />
+                  基本统计
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-600">哈希长度</h4>
+                    <p className="text-lg font-mono mt-1">
+                      {showBinaryView ? currentHash.length * 4 : currentHash.length}
+                      <span className="text-sm text-gray-500 ml-1">
+                        {showBinaryView ? '位' : '字符'}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-600">熵值</h4>
+                    <p className="text-lg font-mono mt-1">
+                      {hashStats.entropy.toFixed(2)}
+                      <span className="text-sm text-gray-500 ml-1">比特/字符</span>
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-600">雪崩效应</h4>
+                    <p className="text-lg font-mono mt-1">
+                      {avalancheEffect.toFixed(1)}%
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium text-gray-600">字符种类</h4>
+                    <p className="text-lg font-mono mt-1">
+                      {hashStats.distribution.length}
+                      <span className="text-sm text-gray-500 ml-1">种</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 分布分析 */}
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-medium flex items-center">
+                    <ChartPieIcon className="h-5 w-5 mr-2" />
+                    分布分析
+                  </h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <h4 className="text-sm font-medium mb-3">字符分布</h4>
+                    <div className="space-y-2">
+                      {hashStats.distribution.map(([char, count], index) => (
+                        <div key={index} className="flex items-center">
+                          <span className="font-mono w-8">{char}</span>
+                          <div className="flex-grow mx-2">
+                            <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-blue-600 transition-all duration-300"
+                                style={{ width: `${(count / currentHash.length) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                          <span className="text-sm text-gray-600 w-16 text-right">
+                            {((count / currentHash.length) * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium mb-3">二进制分布</h4>
+                    <div className="space-y-4">
+                      <div className="bg-gray-50 p-4 rounded-lg">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-sm font-medium">0/1 比例</span>
+                          <span className="text-sm text-gray-600">
+                            {((hashStats.zeros / (hashStats.zeros + hashStats.ones)) * 100).toFixed(1)}% /
+                            {((hashStats.ones / (hashStats.zeros + hashStats.ones)) * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                        <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-600"
+                            style={{
+                              width: `${(hashStats.zeros / (hashStats.zeros + hashStats.ones)) * 100}%`
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-gray-50 p-3 rounded-lg text-center">
+                          <div className="text-2xl font-mono">{hashStats.zeros}</div>
+                          <div className="text-sm text-gray-600">零位数量</div>
+                        </div>
+                        <div className="bg-gray-50 p-3 rounded-lg text-center">
+                          <div className="text-2xl font-mono">{hashStats.ones}</div>
+                          <div className="text-sm text-gray-600">一位数量</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 序列分析 */}
+              <div className="bg-white rounded-lg shadow-sm p-6">
+                <h3 className="font-medium mb-4 flex items-center">
+                  <AcademicCapIcon className="h-5 w-5 mr-2" />
+                  序列分析
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium mb-3">连续性分析</h4>
+                    <div className="space-y-2">
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>最长连续相同字符</span>
+                          <span className="font-mono">
+                            {currentHash.match(/(.)\1*/g)?.reduce((max, curr) =>
+                              curr.length > max ? curr.length : max, 0) || 0}
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>不同字符对数量</span>
+                          <span className="font-mono">
+                            {currentHash.split('').reduce((count, _, i) =>
+                              i > 0 && currentHash[i] !== currentHash[i - 1] ? count + 1 : count, 0)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="text-sm font-medium mb-3">模式分析</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>重复模式数</span>
+                        <span className="font-mono">
+                          {new Set(currentHash.match(/.{2}/g)).size}
+                        </span>
+                      </div>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span>独特字符数</span>
+                        <span className="font-mono">
+                          {new Set(currentHash.split('')).size}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
