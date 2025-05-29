@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { HashService, HashResult } from '../utils/hashUtils';
-import { HistoryService, HistoryFilter } from '../utils/historyService';
 import NotificationService from '../utils/notificationService';
 import {
   ChartBarIcon,
@@ -21,8 +20,7 @@ import {
   CheckCircleIcon,
   DocumentDuplicateIcon,
   ArrowsRightLeftIcon,
-  ExclamationTriangleIcon,
-  ClockIcon
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
 interface HashBit {
@@ -182,6 +180,392 @@ const copySuccessStyle = `
   z-10
 `;
 
+// 添加二进制分析类型
+interface BinaryAnalysis {
+  binaryString: string;
+  zeros: number;
+  ones: number;
+  zeroPercentage: number;
+  onePercentage: number;
+}
+
+// 添加对比分析类型
+interface ComparisonAnalysisResult {
+  frontHalfDiffs: number[];
+  backHalfDiffs: number[];
+  maxConsecutiveDiff: number;
+  diffSegments: number;
+  maxGap: number;
+  charDistribution: Array<{
+    char: string;
+    mainCount: number;
+    compCount: number;
+  }>;
+  frontHalfPercentage: number;
+  backHalfPercentage: number;
+  summary: string;
+}
+
+// 添加辅助函数
+const getAvalancheEffectDescription = (effect: number): string => {
+  if (effect > 45) return '优秀';
+  if (effect > 35) return '良好';
+  if (effect > 25) return '一般';
+  return '较弱';
+};
+
+const getDiffDescription = (percentage: number): string => {
+  if (percentage > 75) return '差异显著';
+  if (percentage > 50) return '差异较大';
+  if (percentage > 25) return '存在差异';
+  return '差异较小';
+};
+
+const getEntropyQuality = (entropy: number): string => {
+  if (entropy > 7) return '高';
+  if (entropy > 5) return '中';
+  return '低';
+};
+
+// 修改 AnalysisPanel 组件的参数类型
+interface AnalysisPanelProps {
+  currentHash: string;
+  comparisonHash?: string;
+  hashComparison?: HashComparison | null;
+  hashStats: HashStats;
+  showBinaryView: boolean;
+  hashAnalysis: BinaryAnalysis | null;
+  comparisonAnalysis?: ComparisonAnalysisResult | null;
+}
+
+// 添加可复用的图表组件
+interface DistributionBarProps {
+  value: number;
+  total: number;
+  color?: string;
+  className?: string;
+}
+
+const DistributionBar: React.FC<DistributionBarProps> = ({ value, total, color = 'bg-blue-600', className = '' }) => (
+  <div className={`h-4 bg-gray-200 rounded-full overflow-hidden ${className}`}>
+    <div
+      className={`h-full ${color} transition-all duration-300`}
+      style={{ width: `${(value / total) * 100}%` }}
+    />
+  </div>
+);
+
+interface CharDistributionProps {
+  char: string;
+  mainCount: number;
+  compCount?: number;
+  total: number;
+  compTotal?: number;
+}
+
+const CharDistribution: React.FC<CharDistributionProps> = ({
+  char,
+  mainCount,
+  compCount,
+  total,
+  compTotal
+}) => (
+  <div className="flex items-center">
+    <span className="font-mono w-8">{char}</span>
+    <div className="flex-grow mx-2">
+      <div className="h-4 bg-gray-200 rounded-full overflow-hidden flex">
+        <div
+          className="h-full bg-blue-600"
+          style={{ width: `${(mainCount / total) * 100}%` }}
+        />
+        {compCount !== undefined && compTotal && (
+          <div
+            className="h-full bg-red-600 opacity-50"
+            style={{ width: `${(compCount / compTotal) * 100}%` }}
+          />
+        )}
+      </div>
+    </div>
+    <span className="text-sm text-gray-600 w-24 text-right">
+      {mainCount}{compCount !== undefined ? ` vs ${compCount}` : ''}
+    </span>
+  </div>
+);
+
+interface BinaryDistributionProps {
+  zeros: number;
+  ones: number;
+  showPercentage?: boolean;
+}
+
+const BinaryDistribution: React.FC<BinaryDistributionProps> = ({ zeros, ones, showPercentage = true }) => {
+  const total = zeros + ones;
+  const zeroPercentage = (zeros / total) * 100;
+  const onePercentage = (ones / total) * 100;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-sm font-medium">0/1 比例</span>
+          {showPercentage && (
+            <span className="text-sm text-gray-600">
+              {zeroPercentage.toFixed(1)}% / {onePercentage.toFixed(1)}%
+            </span>
+          )}
+        </div>
+        <DistributionBar value={zeros} total={total} />
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-gray-50 p-3 rounded-lg text-center">
+          <div className="text-2xl font-mono">{zeros}</div>
+          <div className="text-sm text-gray-600">零位数量</div>
+        </div>
+        <div className="bg-gray-50 p-3 rounded-lg text-center">
+          <div className="text-2xl font-mono">{ones}</div>
+          <div className="text-sm text-gray-600">一位数量</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+interface DiffHeatmapProps {
+  diffPositions: number[];
+  totalLength: number;
+}
+
+const DiffHeatmap: React.FC<DiffHeatmapProps> = ({ diffPositions, totalLength }) => (
+  <div className="h-8 bg-gray-200 rounded-full overflow-hidden relative">
+    {diffPositions.map((pos, index) => (
+      <div
+        key={index}
+        className="absolute h-full bg-red-500 opacity-50"
+        style={{
+          left: `${(pos / totalLength) * 100}%`,
+          width: '1%'
+        }}
+        title={`位置: ${pos + 1}`}
+      />
+    ))}
+  </div>
+);
+
+const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
+  currentHash,
+  comparisonHash,
+  hashComparison,
+  hashStats,
+  showBinaryView,
+  hashAnalysis,
+  comparisonAnalysis
+}) => {
+  return (
+    <div className="space-y-6">
+      {/* 基本统计 */}
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-medium flex items-center">
+            <ChartBarIcon className="h-5 w-5 mr-2" />
+            基本统计
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-600">哈希长度</h4>
+            <p className="text-lg font-mono mt-1">
+              {showBinaryView ? currentHash.length * 4 : currentHash.length}
+              <span className="text-sm text-gray-500 ml-1">
+                {showBinaryView ? '位' : '字符'}
+              </span>
+            </p>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-600">熵值</h4>
+            <p className="text-lg font-mono mt-1">
+              {hashStats.entropy.toFixed(2)}
+              <span className="text-sm text-gray-500 ml-1">比特/字符</span>
+            </p>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-600">字符种类</h4>
+            <p className="text-lg font-mono mt-1">
+              {hashStats.distribution.length}
+              <span className="text-sm text-gray-500 ml-1">种</span>
+            </p>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-gray-600">分布均匀度</h4>
+            <p className="text-lg font-mono mt-1">
+              {((hashStats.entropy / Math.log2(16)) * 100).toFixed(1)}%
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 分布分析 */}
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-medium flex items-center">
+            <ChartPieIcon className="h-5 w-5 mr-2" />
+            分布分析
+          </h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <h4 className="text-sm font-medium mb-3">字符分布</h4>
+            <div className="space-y-2">
+              {hashStats.distribution.map(([char, count], index) => (
+                <CharDistribution
+                  key={index}
+                  char={char}
+                  mainCount={count}
+                  total={currentHash.length}
+                />
+              ))}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-sm font-medium mb-3">二进制分布</h4>
+            {hashAnalysis && (
+              <BinaryDistribution
+                zeros={hashAnalysis.zeros}
+                ones={hashAnalysis.ones}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 序列分析 */}
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <h3 className="font-medium mb-4 flex items-center">
+          <AcademicCapIcon className="h-5 w-5 mr-2" />
+          序列分析
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium mb-3">连续性分析</h4>
+            <div className="space-y-2">
+              <div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>最长连续相同字符</span>
+                  <span className="font-mono">
+                    {currentHash.match(/(.)\1*/g)?.reduce((max, curr) =>
+                      curr.length > max ? curr.length : max, 0) || 0}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>不同字符对数量</span>
+                  <span className="font-mono">
+                    {currentHash.split('').reduce((count, _, i) =>
+                      i > 0 && currentHash[i] !== currentHash[i - 1] ? count + 1 : count, 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium mb-3">模式分析</h4>
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm mb-1">
+                <span>重复模式数</span>
+                <span className="font-mono">
+                  {new Set(currentHash.match(/.{2}/g)).size}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm mb-1">
+                <span>独特字符数</span>
+                <span className="font-mono">
+                  {new Set(currentHash.split('')).size}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 对比分析（如果有对比哈希值） */}
+      {comparisonHash && hashComparison && (
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-medium flex items-center">
+              <DocumentChartBarIcon className="h-5 w-5 mr-2" />
+              对比分析
+            </h3>
+          </div>
+          <div className="space-y-4">
+            {/* 使用之前优化过的对比分析内容 */}
+            {comparisonAnalysis && (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className={`p-4 rounded-lg ${hashComparison.identical ? 'bg-green-50' : 'bg-blue-50'}`}>
+                    <h4 className="text-sm font-medium mb-2">总体评估</h4>
+                    <div className="text-2xl font-bold mb-1">
+                      {hashComparison.identical ? '完全相同' : getDiffDescription(hashComparison.diffPercentage)}
+                    </div>
+                  </div>
+
+                  <div className={`p-4 rounded-lg ${hashComparison.avalancheEffect > 45 ? 'bg-green-50' : 'bg-yellow-50'}`}>
+                    <h4 className="text-sm font-medium mb-2">雪崩效应</h4>
+                    <div className="text-2xl font-bold mb-1">
+                      {getAvalancheEffectDescription(hashComparison.avalancheEffect)}
+                    </div>
+                  </div>
+
+                  <div className="p-4 rounded-lg bg-blue-50">
+                    <h4 className="text-sm font-medium mb-2">熵值质量</h4>
+                    <div className="text-2xl font-bold mb-1">
+                      {getEntropyQuality(hashStats.entropy)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 差异分布热图 */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="text-sm font-medium mb-4">差异分布热图</h4>
+                  <DiffHeatmap
+                    diffPositions={hashComparison.diffPositions}
+                    totalLength={currentHash.length}
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    差异集中在 {hashComparison.diffPositions.length} 个位置
+                  </p>
+                </div>
+
+                {/* 字符分布对比 */}
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h4 className="text-sm font-medium mb-4">字符分布对比</h4>
+                  <div className="space-y-2">
+                    {comparisonAnalysis.charDistribution.map((item, index) => (
+                      <CharDistribution
+                        key={index}
+                        char={item.char}
+                        mainCount={item.mainCount}
+                        compCount={item.compCount}
+                        total={currentHash.length}
+                        compTotal={comparisonHash.length}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* 分析总结 */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="text-sm font-medium mb-2">分析总结</h4>
+                  <p className="text-sm text-gray-700">
+                    {comparisonAnalysis.summary}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function HashVisualization() {
   const [inputText, setInputText] = useState('Hello');
   const [previousHash, setPreviousHash] = useState<string>('');
@@ -213,24 +597,14 @@ export default function HashVisualization() {
   const [highlightedBits, setHighlightedBits] = useState<number[]>([]);
   const [comparisonHash, setComparisonHash] = useState<string>('');
   const [hashComparison, setHashComparison] = useState<HashComparison | null>(null);
-
-  // 添加文件处理相关的状态
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [processingFiles, setProcessingFiles] = useState(false);
   const [processProgress, setProcessProgress] = useState(0);
 
-  // 添加历史记录相关的状态
-  const [showHistory, setShowHistory] = useState(false);
-  const [historyItems, setHistoryItems] = useState<HashResult[]>([]);
-  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>({});
-
   const calculateHash = useCallback(async (text: string) => {
     try {
       const result = await HashService.calculateTextHash(text, { algorithm: 'sha256' });
-
-      // 添加到历史记录
-      HistoryService.addToHistory(result);
 
       if (previousHash && result.hash !== previousHash) {
         setAnimateChange(true);
@@ -481,11 +855,6 @@ export default function HashVisualization() {
         (progress) => setProcessProgress(progress)
       );
 
-      // 处理结果
-      results.forEach(result => {
-        HistoryService.addToHistory(result);
-      });
-
       // 如果只有一个文件，直接显示其哈希值
       if (results.length === 1) {
         setCurrentHash(results[0].hash);
@@ -500,17 +869,83 @@ export default function HashVisualization() {
     }
   };
 
-  // 加载历史记录
-  useEffect(() => {
-    if (showHistory) {
-      const history = HistoryService.searchHistory(historyFilter);
-      setHistoryItems(history);
+  // 使用 useMemo 缓存计算结果
+  const comparisonAnalysis = useMemo(() => {
+    if (!hashComparison || !currentHash || !comparisonHash) {
+      return null;
     }
-  }, [showHistory, historyFilter]);
+
+    const frontHalfDiffs = hashComparison.diffPositions.filter(pos => pos < currentHash.length / 2);
+    const backHalfDiffs = hashComparison.diffPositions.filter(pos => pos >= currentHash.length / 2);
+
+    const maxConsecutiveDiff = hashComparison.diffPositions.reduce((max, pos, i, arr) => {
+      if (i === 0) return 1;
+      const curr = pos - arr[i - 1] === 1 ? max + 1 : 1;
+      return Math.max(max, curr);
+    }, 1);
+
+    const diffSegments = hashComparison.diffPositions.reduce((count, pos, i, arr) => {
+      if (i === 0) return 1;
+      return pos - arr[i - 1] > 1 ? count + 1 : count;
+    }, 1);
+
+    const maxGap = Math.max(...hashComparison.diffPositions.map((pos, i, arr) =>
+      i > 0 ? pos - arr[i - 1] : 0
+    ));
+
+    const charDistribution = Array.from(new Set([
+      ...currentHash.split(''),
+      ...comparisonHash.split('')
+    ])).sort().map(char => ({
+      char,
+      mainCount: currentHash.split(char).length - 1,
+      compCount: comparisonHash.split(char).length - 1
+    }));
+
+    return {
+      frontHalfDiffs,
+      backHalfDiffs,
+      maxConsecutiveDiff,
+      diffSegments,
+      maxGap,
+      charDistribution,
+      frontHalfPercentage: (frontHalfDiffs.length / (currentHash.length / 2)) * 100,
+      backHalfPercentage: (backHalfDiffs.length / (currentHash.length / 2)) * 100,
+      summary: hashComparison.identical
+        ? '两个哈希值完全相同，表明输入内容未发生任何改变。'
+        : `两个哈希值存在 ${hashComparison.diffBits} 位差异（${hashComparison.diffPercentage.toFixed(1)}%）。` +
+        `${hashComparison.avalancheEffect > 45
+          ? ' 表现出良好的雪崩效应，微小的输入改变导致了显著的输出差异。'
+          : ' 雪崩效应不够理想，可能需要进一步分析输入差异。'
+        }` +
+        `差异主要集中在${frontHalfDiffs.length > backHalfDiffs.length ? '前半部分' : '后半部分'}，` +
+        `最长连续差异为 ${maxConsecutiveDiff} 位。`
+    };
+  }, [hashComparison, currentHash, comparisonHash]);
+
+  // 使用 useMemo 缓存统计数据
+  const hashAnalysis = useMemo(() => {
+    if (!currentHash) return null;
+
+    const binaryString = currentHash
+      .split('')
+      .map(char => parseInt(char, 16).toString(2).padStart(4, '0'))
+      .join('');
+
+    const zeros = binaryString.split('0').length - 1;
+    const ones = binaryString.split('1').length - 1;
+
+    return {
+      binaryString,
+      zeros,
+      ones,
+      zeroPercentage: (zeros / binaryString.length) * 100,
+      onePercentage: (ones / binaryString.length) * 100
+    };
+  }, [currentHash]);
 
   return (
     <div className={`${showFullscreen ? 'fixed inset-0 z-50 bg-white overflow-auto' : ''}`}>
-      {/* 顶部导航栏 */}
       <div className="sticky top-0 bg-white shadow-sm z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -565,7 +1000,6 @@ export default function HashVisualization() {
         </div>
       </div>
 
-      {/* 主要内容区域 */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* 预设示例区域 */}
         <div className="mb-6">
@@ -1065,19 +1499,10 @@ export default function HashVisualization() {
                     {/* 差异位置分布 */}
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <h4 className="text-sm font-medium mb-2">差异位置分布</h4>
-                      <div className="h-8 bg-gray-200 rounded-full overflow-hidden relative">
-                        {hashComparison?.diffPositions.map((pos, index) => (
-                          <div
-                            key={index}
-                            className="absolute h-full bg-red-500 opacity-50"
-                            style={{
-                              left: `${(pos / currentHash.length) * 100}%`,
-                              width: '1%'
-                            }}
-                            title={`位置: ${pos + 1}`}
-                          />
-                        ))}
-                      </div>
+                      <DiffHeatmap
+                        diffPositions={hashComparison?.diffPositions || []}
+                        totalLength={currentHash.length}
+                      />
                       <p className="text-xs text-gray-500 mt-2">
                         差异集中在 {hashComparison?.diffPositions.length} 个位置
                       </p>
@@ -1139,521 +1564,6 @@ export default function HashVisualization() {
                     </h3>
                   </div>
                   <div className="space-y-4">
-                    {/* 字符分布对比 */}
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium mb-2">字符分布对比</h4>
-                      <div className="space-y-2">
-                        {Array.from(new Set([
-                          ...hashStats.distribution.map(([char]) => char),
-                          ...(comparisonHash?.split('') || [])
-                        ])).sort().map(char => {
-                          const mainCount = currentHash.split(char).length - 1;
-                          const compCount = comparisonHash?.split(char).length - 1 || 0;
-                          return (
-                            <div key={char} className="flex items-center">
-                              <span className="font-mono w-8">{char}</span>
-                              <div className="flex-grow mx-2">
-                                <div className="h-4 bg-gray-200 rounded-full overflow-hidden flex">
-                                  <div
-                                    className="h-full bg-blue-600"
-                                    style={{ width: `${(mainCount / currentHash.length) * 100}%` }}
-                                  />
-                                  <div
-                                    className="h-full bg-red-600 opacity-50"
-                                    style={{ width: `${(compCount / (comparisonHash?.length || 1)) * 100}%` }}
-                                  />
-                                </div>
-                              </div>
-                              <span className="text-sm text-gray-600 w-24 text-right">
-                                {mainCount} vs {compCount}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {/* 统计对比 */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-gray-50 p-3 rounded-lg text-center">
-                        <div className="text-sm font-medium text-gray-600">独特字符差异</div>
-                        <div className="text-lg font-mono mt-1">
-                          {Math.abs(
-                            new Set(currentHash.split('')).size -
-                            new Set(comparisonHash?.split('') || []).size
-                          )}
-                        </div>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-lg text-center">
-                        <div className="text-sm font-medium text-gray-600">熵值差异</div>
-                        <div className="text-lg font-mono mt-1">
-                          {Math.abs(hashStats.entropy - (hashComparison?.entropy || 0)).toFixed(2)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 对比结果 */}
-          {showComparison && hashComparison && (
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <div className="flex items-center mb-4">
-                <ChartBarIcon className="h-5 w-5 mr-2" />
-                <h3 className="font-medium">对比结果</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className={`p-4 rounded-lg ${hashComparison.identical ? 'bg-green-50' : 'bg-red-50'
-                  }`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">状态</span>
-                    {hashComparison.identical ? (
-                      <span className="text-green-600 text-sm">完全相同</span>
-                    ) : (
-                      <span className="text-red-600 text-sm">存在差异</span>
-                    )}
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">差异字符数</span>
-                    <span className="text-gray-600 text-sm">{hashComparison.diffCount}</span>
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">差异比特数</span>
-                    <span className="text-gray-600 text-sm">{hashComparison.diffBits}</span>
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">差异比例</span>
-                    <span className="text-gray-600 text-sm">{hashComparison.diffPercentage.toFixed(1)}%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-        {/* 标签页内容 */}
-        <div className={`mt-6 ${showComparison ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'} gap-6`}>
-          {/* 左侧内容 */}
-          <div className="space-y-6">
-            {activeTab === 'visualization' && (
-              <>
-                {/* 雪崩效应展示 */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-medium flex items-center">
-                      <ChartBarIcon className="h-5 w-5 mr-2" />
-                      雪崩效应
-                    </h3>
-                    <span className="text-sm font-medium">
-                      变化率: {avalancheEffect.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-300 ${avalancheEffect > 45 ? 'bg-green-600' : 'bg-blue-600'
-                        }`}
-                      style={{ width: `${avalancheEffect}%` }}
-                    />
-                  </div>
-                  <p className="text-sm text-gray-600 mt-2">
-                    当前修改导致 {showBinaryView ? (avalancheEffect * 4).toFixed(1) : avalancheEffect.toFixed(1)} 个
-                    {showBinaryView ? '比特' : '字符'} 发生变化
-                    {avalancheEffect > 45 && (
-                      <span className="text-green-600 ml-2">
-                        (达到理想的雪崩效应)
-                      </span>
-                    )}
-                  </p>
-                </div>
-
-                {/* 分布统计 */}
-                <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-medium flex items-center">
-                      <ChartPieIcon className="h-5 w-5 mr-2" />
-                      哈希值分布
-                    </h3>
-                    <button
-                      onClick={() => setShowAdvancedStats(!showAdvancedStats)}
-                      className="text-sm text-blue-600 hover:text-blue-800"
-                    >
-                      {showAdvancedStats ? '隐藏详细信息' : '显示详细信息'}
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {hashStats.distribution.map(([char, count], index) => (
-                      <div key={index} className="bg-gray-50 p-3 rounded-lg">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-mono text-lg">{char}</span>
-                          <span className="text-sm text-gray-600">{count}次</span>
-                        </div>
-                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-blue-600"
-                            style={{ width: `${(Number(count) / currentHash.length) * 100}%` }}
-                          />
-                        </div>
-                        {showAdvancedStats && (
-                          <div className="mt-2 text-xs text-gray-500">
-                            占比: {((count / currentHash.length) * 100).toFixed(1)}%
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {showAdvancedStats && (
-                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <h4 className="text-sm font-medium mb-2">熵值</h4>
-                        <p className="text-lg font-mono">{hashStats.entropy.toFixed(2)}</p>
-                        <p className="text-xs text-gray-500 mt-1">比特/字符</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <h4 className="text-sm font-medium mb-2">零值比例</h4>
-                        <p className="text-lg font-mono">
-                          {((hashStats.zeros / currentHash.length) * 100).toFixed(1)}%
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">{hashStats.zeros} 个零值</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <h4 className="text-sm font-medium mb-2">非零值比例</h4>
-                        <p className="text-lg font-mono">
-                          {((hashStats.ones / currentHash.length) * 100).toFixed(1)}%
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">{hashStats.ones} 个非零值</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            )}
-
-            {activeTab === 'analysis' && (
-              <div className="space-y-6">
-                {/* 基本统计 */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-medium flex items-center">
-                      <ChartBarIcon className="h-5 w-5 mr-2" />
-                      基本统计
-                    </h3>
-                    <div className="flex items-center space-x-3">
-                      <select
-                        value={showBinaryView ? 'binary' : 'hex'}
-                        onChange={(e) => setShowBinaryView(e.target.value === 'binary')}
-                        className={`${selectBaseStyle} min-w-[100px] text-sm`}
-                      >
-                        <option value="hex" className="py-1">十六进制</option>
-                        <option value="binary" className="py-1">二进制</option>
-                      </select>
-                      <select
-                        value={showAdvancedStats ? 'advanced' : 'basic'}
-                        onChange={(e) => setShowAdvancedStats(e.target.value === 'advanced')}
-                        className={`${selectBaseStyle} min-w-[100px] text-sm`}
-                      >
-                        <option value="basic" className="py-1">基础统计</option>
-                        <option value="advanced" className="py-1">高级统计</option>
-                      </select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium text-gray-600">哈希长度</h4>
-                      <p className="text-lg font-mono mt-1">
-                        {showBinaryView ? currentHash.length * 4 : currentHash.length}
-                        <span className="text-sm text-gray-500 ml-1">
-                          {showBinaryView ? '位' : '字符'}
-                        </span>
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium text-gray-600">熵值</h4>
-                      <p className="text-lg font-mono mt-1">
-                        {hashStats.entropy.toFixed(2)}
-                        <span className="text-sm text-gray-500 ml-1">比特/字符</span>
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium text-gray-600">雪崩效应</h4>
-                      <p className="text-lg font-mono mt-1">
-                        {avalancheEffect.toFixed(1)}%
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium text-gray-600">字符种类</h4>
-                      <p className="text-lg font-mono mt-1">
-                        {hashStats.distribution.length}
-                        <span className="text-sm text-gray-500 ml-1">种</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 分布分析 */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-medium flex items-center">
-                      <ChartPieIcon className="h-5 w-5 mr-2" />
-                      分布分析
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <h4 className="text-sm font-medium mb-3">字符分布</h4>
-                      <div className="space-y-2">
-                        {hashStats.distribution.map(([char, count], index) => (
-                          <div key={index} className="flex items-center">
-                            <span className="font-mono w-8">{char}</span>
-                            <div className="flex-grow mx-2">
-                              <div className="h-4 bg-gray-100 rounded-full overflow-hidden">
-                                <div
-                                  className="h-full bg-blue-600 transition-all duration-300"
-                                  style={{ width: `${(count / currentHash.length) * 100}%` }}
-                                />
-                              </div>
-                            </div>
-                            <span className="text-sm text-gray-600 w-16 text-right">
-                              {((count / currentHash.length) * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-medium mb-3">二进制分布</h4>
-                      <div className="space-y-4">
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm font-medium">0/1 比例</span>
-                            <span className="text-sm text-gray-600">
-                              {((hashStats.zeros / (hashStats.zeros + hashStats.ones)) * 100).toFixed(1)}% /
-                              {((hashStats.ones / (hashStats.zeros + hashStats.ones)) * 100).toFixed(1)}%
-                            </span>
-                          </div>
-                          <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-blue-600"
-                              style={{
-                                width: `${(hashStats.zeros / (hashStats.zeros + hashStats.ones)) * 100}%`
-                              }}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="bg-gray-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-mono">{hashStats.zeros}</div>
-                            <div className="text-sm text-gray-600">零位数量</div>
-                          </div>
-                          <div className="bg-gray-50 p-3 rounded-lg text-center">
-                            <div className="text-2xl font-mono">{hashStats.ones}</div>
-                            <div className="text-sm text-gray-600">一位数量</div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 序列分析 */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <h3 className="font-medium mb-4 flex items-center">
-                    <AcademicCapIcon className="h-5 w-5 mr-2" />
-                    序列分析
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium mb-3">连续性分析</h4>
-                      <div className="space-y-2">
-                        <div>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span>最长连续相同字符</span>
-                            <span className="font-mono">
-                              {currentHash.match(/(.)\1*/g)?.reduce((max, curr) =>
-                                curr.length > max ? curr.length : max, 0) || 0}
-                            </span>
-                          </div>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span>不同字符对数量</span>
-                            <span className="font-mono">
-                              {currentHash.split('').reduce((count, _, i) =>
-                                i > 0 && currentHash[i] !== currentHash[i - 1] ? count + 1 : count, 0)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium mb-3">模式分析</h4>
-                      <div className="space-y-2">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span>重复模式数</span>
-                          <span className="font-mono">
-                            {new Set(currentHash.match(/.{2}/g)).size}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span>独特字符数</span>
-                          <span className="font-mono">
-                            {new Set(currentHash.split('')).size}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 对比基本统计 */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-medium flex items-center">
-                      <ChartBarIcon className="h-5 w-5 mr-2" />
-                      对比统计
-                    </h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium text-gray-600">差异位数</h4>
-                      <p className="text-lg font-mono mt-1">
-                        {hashComparison?.diffBits || 0}
-                        <span className="text-sm text-gray-500 ml-1">位</span>
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium text-gray-600">差异比例</h4>
-                      <p className="text-lg font-mono mt-1">
-                        {hashComparison?.diffPercentage.toFixed(1) || '0.0'}%
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 差异分析 */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-medium flex items-center">
-                      <DocumentChartBarIcon className="h-5 w-5 mr-2" />
-                      差异分析
-                    </h3>
-                  </div>
-                  <div className="space-y-4">
-                    {/* 差异位置分布 */}
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium mb-2">差异位置分布</h4>
-                      <div className="h-8 bg-gray-200 rounded-full overflow-hidden relative">
-                        {hashComparison?.diffPositions.map((pos, index) => (
-                          <div
-                            key={index}
-                            className="absolute h-full bg-red-500 opacity-50"
-                            style={{
-                              left: `${(pos / currentHash.length) * 100}%`,
-                              width: '1%'
-                            }}
-                            title={`位置: ${pos + 1}`}
-                          />
-                        ))}
-                      </div>
-                      <p className="text-xs text-gray-500 mt-2">
-                        差异集中在 {hashComparison?.diffPositions.length} 个位置
-                      </p>
-                    </div>
-
-                    {/* 连续差异分析 */}
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium mb-2">连续差异分析</h4>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm text-gray-600">最长连续差异</p>
-                          <p className="text-lg font-mono">
-                            {hashComparison?.diffPositions.reduce((max, pos, i, arr) => {
-                              if (i === 0) return 1;
-                              const curr = pos - arr[i - 1] === 1 ? max + 1 : 1;
-                              return Math.max(max, curr);
-                            }, 1) || 0} 位
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">差异段数</p>
-                          <p className="text-lg font-mono">
-                            {hashComparison?.diffPositions.reduce((count, pos, i, arr) => {
-                              if (i === 0) return 1;
-                              return pos - arr[i - 1] > 1 ? count + 1 : count;
-                            }, 1) || 0} 段
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 差异特征 */}
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium mb-2">差异特征</h4>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <p className="text-sm text-gray-600">前32位差异</p>
-                          <p className="text-lg font-mono">
-                            {hashComparison?.diffPositions.filter(pos => pos < 32).length || 0} 位
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">后32位差异</p>
-                          <p className="text-lg font-mono">
-                            {hashComparison?.diffPositions.filter(pos => pos >= 32).length || 0} 位
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 分布对比 */}
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-medium flex items-center">
-                      <ChartPieIcon className="h-5 w-5 mr-2" />
-                      分布对比
-                    </h3>
-                  </div>
-                  <div className="space-y-4">
-                    {/* 字符分布对比 */}
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <h4 className="text-sm font-medium mb-2">字符分布对比</h4>
-                      <div className="space-y-2">
-                        {Array.from(new Set([
-                          ...hashStats.distribution.map(([char]) => char),
-                          ...(comparisonHash?.split('') || [])
-                        ])).sort().map(char => {
-                          const mainCount = currentHash.split(char).length - 1;
-                          const compCount = comparisonHash?.split(char).length - 1 || 0;
-                          return (
-                            <div key={char} className="flex items-center">
-                              <span className="font-mono w-8">{char}</span>
-                              <div className="flex-grow mx-2">
-                                <div className="h-4 bg-gray-200 rounded-full overflow-hidden flex">
-                                  <div
-                                    className="h-full bg-blue-600"
-                                    style={{ width: `${(mainCount / currentHash.length) * 100}%` }}
-                                  />
-                                  <div
-                                    className="h-full bg-red-600 opacity-50"
-                                    style={{ width: `${(compCount / (comparisonHash?.length || 1)) * 100}%` }}
-                                  />
-                                </div>
-                              </div>
-                              <span className="text-sm text-gray-600 w-24 text-right">
-                                {mainCount} vs {compCount}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
                     {/* 统计对比 */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-gray-50 p-3 rounded-lg text-center">
@@ -1729,6 +1639,128 @@ export default function HashVisualization() {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* 对比结果 */}
+          {showComparison && hashComparison && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="flex items-center mb-4">
+                <ChartBarIcon className="h-5 w-5 mr-2" />
+                <h3 className="font-medium">对比结果</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className={`p-4 rounded-lg ${hashComparison.identical ? 'bg-green-50' : 'bg-red-50'
+                  }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">状态</span>
+                    {hashComparison.identical ? (
+                      <span className="text-green-600 text-sm">完全相同</span>
+                    ) : (
+                      <span className="text-red-600 text-sm">存在差异</span>
+                    )}
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">差异字符数</span>
+                    <span className="text-gray-600 text-sm">{hashComparison.diffCount}</span>
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">差异比特数</span>
+                    <span className="text-gray-600 text-sm">{hashComparison.diffBits}</span>
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">差异比例</span>
+                    <span className="text-gray-600 text-sm">{hashComparison.diffPercentage.toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        {/* 标签页内容 */}
+        <div className={`mt-6 ${showComparison ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1'} gap-6`}>
+          {/* 左侧内容 */}
+          <div className="space-y-6">
+            {activeTab === 'visualization' && (
+              <>
+                {/* 分布统计 */}
+                <div className="bg-white rounded-lg shadow-sm p-6 mt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-medium flex items-center">
+                      <ChartPieIcon className="h-5 w-5 mr-2" />
+                      哈希值分布
+                    </h3>
+                    <button
+                      onClick={() => setShowAdvancedStats(!showAdvancedStats)}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      {showAdvancedStats ? '隐藏详细信息' : '显示详细信息'}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {hashStats.distribution.map(([char, count], index) => (
+                      <div key={index} className="bg-gray-50 p-3 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-mono text-lg">{char}</span>
+                          <span className="text-sm text-gray-600">{count}次</span>
+                        </div>
+                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-600"
+                            style={{ width: `${(Number(count) / currentHash.length) * 100}%` }}
+                          />
+                        </div>
+                        {showAdvancedStats && (
+                          <div className="mt-2 text-xs text-gray-500">
+                            占比: {((count / currentHash.length) * 100).toFixed(1)}%
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  {showAdvancedStats && (
+                    <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="text-sm font-medium mb-2">熵值</h4>
+                        <p className="text-lg font-mono">{hashStats.entropy.toFixed(2)}</p>
+                        <p className="text-xs text-gray-500 mt-1">比特/字符</p>
+                      </div>
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="text-sm font-medium mb-2">零值比例</h4>
+                        <p className="text-lg font-mono">
+                          {((hashStats.zeros / currentHash.length) * 100).toFixed(1)}%
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">{hashStats.zeros} 个零值</p>
+                      </div>
+                      <div className="bg-gray-50 p-3 rounded-lg">
+                        <h4 className="text-sm font-medium mb-2">非零值比例</h4>
+                        <p className="text-lg font-mono">
+                          {((hashStats.ones / currentHash.length) * 100).toFixed(1)}%
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">{hashStats.ones} 个非零值</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {activeTab === 'analysis' && (
+              <AnalysisPanel
+                currentHash={currentHash}
+                comparisonHash={comparisonHash}
+                hashComparison={hashComparison}
+                hashStats={hashStats}
+                showBinaryView={showBinaryView}
+                hashAnalysis={hashAnalysis}
+                comparisonAnalysis={comparisonAnalysis}
+              />
             )}
 
             {activeTab === 'tutorial' && (
@@ -1828,201 +1860,6 @@ export default function HashVisualization() {
                       </div>
                     </div>
                   </div>
-
-                  {/* 差异分析 */}
-                  <div className="bg-white rounded-lg shadow-sm p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-medium flex items-center">
-                        <DocumentChartBarIcon className="h-5 w-5 mr-2" />
-                        差异分析
-                      </h3>
-                    </div>
-                    <div className="space-y-4">
-                      {/* 差异位置分布 */}
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <h4 className="text-sm font-medium mb-2">差异位置分布</h4>
-                        <div className="h-8 bg-gray-200 rounded-full overflow-hidden relative">
-                          {hashComparison?.diffPositions.map((pos, index) => (
-                            <div
-                              key={index}
-                              className="absolute h-full bg-red-500 opacity-50"
-                              style={{
-                                left: `${(pos / currentHash.length) * 100}%`,
-                                width: '1%'
-                              }}
-                              title={`位置: ${pos + 1}`}
-                            />
-                          ))}
-                        </div>
-                        <p className="text-xs text-gray-500 mt-2">
-                          差异集中在 {hashComparison?.diffPositions.length} 个位置
-                        </p>
-                      </div>
-
-                      {/* 连续差异分析 */}
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <h4 className="text-sm font-medium mb-2">连续差异分析</h4>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-sm text-gray-600">最长连续差异</p>
-                            <p className="text-lg font-mono">
-                              {hashComparison?.diffPositions.reduce((max, pos, i, arr) => {
-                                if (i === 0) return 1;
-                                const curr = pos - arr[i - 1] === 1 ? max + 1 : 1;
-                                return Math.max(max, curr);
-                              }, 1) || 0} 位
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">差异段数</p>
-                            <p className="text-lg font-mono">
-                              {hashComparison?.diffPositions.reduce((count, pos, i, arr) => {
-                                if (i === 0) return 1;
-                                return pos - arr[i - 1] > 1 ? count + 1 : count;
-                              }, 1) || 0} 段
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 差异特征 */}
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <h4 className="text-sm font-medium mb-2">差异特征</h4>
-                        <div className="grid grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-sm text-gray-600">前32位差异</p>
-                            <p className="text-lg font-mono">
-                              {hashComparison?.diffPositions.filter(pos => pos < 32).length || 0} 位
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-600">后32位差异</p>
-                            <p className="text-lg font-mono">
-                              {hashComparison?.diffPositions.filter(pos => pos >= 32).length || 0} 位
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 分布对比 */}
-                  <div className="bg-white rounded-lg shadow-sm p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-medium flex items-center">
-                        <ChartPieIcon className="h-5 w-5 mr-2" />
-                        分布对比
-                      </h3>
-                    </div>
-                    <div className="space-y-4">
-                      {/* 字符分布对比 */}
-                      <div className="bg-gray-50 p-4 rounded-lg">
-                        <h4 className="text-sm font-medium mb-2">字符分布对比</h4>
-                        <div className="space-y-2">
-                          {Array.from(new Set([
-                            ...hashStats.distribution.map(([char]) => char),
-                            ...(comparisonHash?.split('') || [])
-                          ])).sort().map(char => {
-                            const mainCount = currentHash.split(char).length - 1;
-                            const compCount = comparisonHash?.split(char).length - 1 || 0;
-                            return (
-                              <div key={char} className="flex items-center">
-                                <span className="font-mono w-8">{char}</span>
-                                <div className="flex-grow mx-2">
-                                  <div className="h-4 bg-gray-200 rounded-full overflow-hidden flex">
-                                    <div
-                                      className="h-full bg-blue-600"
-                                      style={{ width: `${(mainCount / currentHash.length) * 100}%` }}
-                                    />
-                                    <div
-                                      className="h-full bg-red-600 opacity-50"
-                                      style={{ width: `${(compCount / (comparisonHash?.length || 1)) * 100}%` }}
-                                    />
-                                  </div>
-                                </div>
-                                <span className="text-sm text-gray-600 w-24 text-right">
-                                  {mainCount} vs {compCount}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* 统计对比 */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-gray-50 p-3 rounded-lg text-center">
-                          <div className="text-sm font-medium text-gray-600">独特字符差异</div>
-                          <div className="text-lg font-mono mt-1">
-                            {Math.abs(
-                              new Set(currentHash.split('')).size -
-                              new Set(comparisonHash?.split('') || []).size
-                            )}
-                          </div>
-                        </div>
-                        <div className="bg-gray-50 p-3 rounded-lg text-center">
-                          <div className="text-sm font-medium text-gray-600">熵值差异</div>
-                          <div className="text-lg font-mono mt-1">
-                            {Math.abs(hashStats.entropy - (hashComparison?.entropy || 0)).toFixed(2)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 对比雪崩效应 */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <h4 className="text-sm font-medium mb-3">雪崩效应分析</h4>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-600">输入文本差异</span>
-                        <span className="text-sm font-mono">
-                          {Array.from(inputText).reduce((count, char, i) =>
-                            count + (char !== comparisonText[i] ? 1 : 0), 0)} 位
-                        </span>
-                      </div>
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm text-gray-600">哈希值变化率</span>
-                          <span className="text-sm font-mono">
-                            {(hashComparison?.avalancheEffect || 0).toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full transition-all duration-300 ${(hashComparison?.avalancheEffect || 0) > 45 ? 'bg-green-500' : 'bg-blue-500'
-                              }`}
-                            style={{ width: `${hashComparison?.avalancheEffect || 0}%` }}
-                          />
-                        </div>
-                        {(hashComparison?.avalancheEffect || 0) > 45 && (
-                          <p className="text-xs text-green-600 mt-1">
-                            达到理想的雪崩效应（&gt;45%）
-                          </p>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-4 pt-2">
-                        <div className="text-center">
-                          <div className="text-sm font-medium text-gray-600">变化位置分布</div>
-                          <div className="text-lg font-mono mt-1">
-                            前32位: {hashComparison?.diffPositions.filter(pos => pos < 32).length || 0}
-                            <br />
-                            后32位: {hashComparison?.diffPositions.filter(pos => pos >= 32).length || 0}
-                          </div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-sm font-medium text-gray-600">最长连续变化</div>
-                          <div className="text-lg font-mono mt-1">
-                            {hashComparison?.diffPositions.reduce((max, pos, i, arr) => {
-                              if (i === 0) return 1;
-                              const curr = pos - arr[i - 1] === 1 ? max + 1 : 1;
-                              return Math.max(max, curr);
-                            }, 1) || 0} 位
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
 
@@ -2051,125 +1888,6 @@ export default function HashVisualization() {
           )}
         </div>
       </div>
-
-      {/* 历史记录按钮 */}
-      <button
-        onClick={() => setShowHistory(!showHistory)}
-        className={`${buttonBaseStyle} px-3 py-1 rounded-md text-sm ${showHistory ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'
-          }`}
-      >
-        <ClockIcon className="h-4 w-4 inline mr-1" />
-        历史记录
-      </button>
-
-      {/* 历史记录面板 */}
-      {showHistory && (
-        <div className="mt-6 bg-white rounded-lg shadow-sm p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-medium flex items-center">
-              <ClockIcon className="h-5 w-5 mr-2" />
-              历史记录
-            </h3>
-            <div className="flex items-center space-x-2">
-              <select
-                value={historyFilter.algorithm || ''}
-                onChange={(e) => setHistoryFilter(prev => ({
-                  ...prev,
-                  algorithm: e.target.value || undefined
-                }))}
-                className={selectBaseStyle}
-              >
-                <option value="">所有算法</option>
-                <option value="sha256">SHA-256</option>
-                <option value="md5">MD5</option>
-                <option value="sha1">SHA-1</option>
-                <option value="sha512">SHA-512</option>
-              </select>
-              <select
-                value={historyFilter.inputType || ''}
-                onChange={(e) => setHistoryFilter(prev => ({
-                  ...prev,
-                  inputType: (e.target.value as 'text' | 'file') || undefined
-                }))}
-                className={selectBaseStyle}
-              >
-                <option value="">所有类型</option>
-                <option value="text">文本</option>
-                <option value="file">文件</option>
-              </select>
-              <button
-                onClick={() => {
-                  HistoryService.clearHistory();
-                  setHistoryItems([]);
-                  NotificationService.success('历史记录已清空');
-                }}
-                className="text-red-600 hover:text-red-700 text-sm"
-              >
-                清空历史
-              </button>
-            </div>
-          </div>
-
-          {historyItems.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              暂无历史记录
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {historyItems.map((item, index) => (
-                <div
-                  key={index}
-                  className="bg-gray-50 p-4 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                  onClick={() => {
-                    if (item.inputType === 'text') {
-                      setInputText(item.hash);
-                    } else if (item.filename) {
-                      NotificationService.info(`文件：${item.filename}`);
-                    }
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">
-                      {item.inputType === 'file' ? item.filename : '文本输入'}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {new Date(item.timestamp).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="font-mono text-sm break-all">
-                    {item.hash}
-                  </div>
-                  <div className="mt-2 flex items-center text-xs text-gray-500">
-                    <span className="mr-4">{item.algorithm.toUpperCase()}</span>
-                    {item.processingTime && (
-                      <span>{item.processingTime.toFixed(2)}ms</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-4 flex justify-end">
-            <button
-              onClick={() => {
-                const csv = HistoryService.exportHistory();
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'hash_history.csv';
-                a.click();
-                URL.revokeObjectURL(url);
-                NotificationService.success('历史记录已导出');
-              }}
-              className={`${buttonBaseStyle} px-4 py-2 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100`}
-            >
-              导出CSV
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 } 

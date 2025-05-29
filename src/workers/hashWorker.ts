@@ -6,6 +6,15 @@ interface HashWorkerData {
   encoding: 'hex' | 'base64';
 }
 
+/**
+ * 定义支持的哈希算法及其对应的CryptoJS实现
+ * 
+ * 包含以下算法：
+ * - md5: 使用CryptoJS.MD5
+ * - sha1: 使用CryptoJS.SHA1
+ * - sha256: 使用CryptoJS.SHA256
+ * - sha512: 使用CryptoJS.SHA512
+ */
 const HASH_ALGORITHMS = {
   md5: CryptoJS.MD5,
   sha1: CryptoJS.SHA1,
