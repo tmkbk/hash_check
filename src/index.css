@@ -14,6 +14,7 @@
 
   #root {
     @apply h-full;
+    width: 100%;
   }
 }
 
