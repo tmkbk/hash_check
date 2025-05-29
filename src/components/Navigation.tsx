@@ -13,7 +13,7 @@ export default function Navigation() {
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
             <h1 className="text-xl font-bold text-gray-900">
-              哈希函数演示平台
+              哈希函数与篡改检测演示平台
             </h1>
             <div className="hidden md:block ml-10">
               <div className="flex items-center space-x-4">
