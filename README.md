@@ -1,54 +1,144 @@
-# React + TypeScript + Vite
+# 哈希函数可视化工具
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+这是一个用于演示和学习哈希函数特性的交互式可视化工具。通过直观的界面展示哈希函数的工作原理，帮助用户理解哈希函数的关键特性。
 
-Currently, two official plugins are available:
+## 功能特性
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 1. 哈希可视化
+- 实时哈希计算和显示
+- 支持十六进制和二进制显示模式
+- 动态展示哈希值变化
+- 可视化位模式分析
 
-## Expanding the ESLint configuration
+### 2. 交互式演示
+- 预设示例场景
+- 动画演示哈希变化
+- 支持自定义输入文本
+- 实时对比分析功能
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### 3. 分析工具
+- 哈希值分布统计
+- 雪崩效应分析
+- 字符分布可视化
+- 差异对比分析
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+### 4. 篡改检测演示
+- 文件完整性验证
+- 数据篡改演示
+- 实时哈希比对
+
+## 技术栈
+
+- React 18
+- TypeScript
+- Tailwind CSS
+- Vite
+- Web Workers
+- Heroicons
+
+## 安装说明
+
+1. 克隆项目
+```bash
+git clone [项目地址]
+cd hash_check
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+2. 安装依赖
+```bash
+npm install
 ```
+
+3. 启动开发服务器
+```bash
+npm run dev
+```
+
+4. 构建生产版本
+```bash
+npm run build
+```
+
+## 项目结构
+
+```
+hash_check/
+├── src/
+│   ├── components/          # React 组件
+│   │   ├── HashVisualization.tsx  # 主要的哈希可视化组件
+│   │   ├── TamperDemo.tsx         # 篡改检测演示
+│   │   ├── Navigation.tsx         # 导航组件
+│   │   ├── ProgressBar.tsx        # 进度条组件
+│   │   └── Notification.tsx       # 通知组件
+│   ├── utils/              # 工具函数
+│   │   ├── hashUtils.ts          # 哈希计算工具
+│   │   └── notificationService.ts # 通知服务
+│   ├── workers/            # Web Workers
+│   │   └── hashWorker.ts         # 哈希计算 Worker
+│   └── styles/             # 样式文件
+├── public/                 # 静态资源
+└── ...配置文件
+```
+
+## 使用指南
+
+### 基本使用
+1. 在主界面输入任意文本，将实时显示其哈希值
+2. 使用预设示例了解哈希函数的不同特性
+3. 切换显示模式（十六进制/二进制）观察数据表示
+
+### 对比分析
+1. 启用对比模式
+2. 输入两个不同的文本
+3. 观察哈希值的差异和分布特性
+
+### 篡改检测演示
+1. 访问篡改检测页面
+2. 上传或输入示例数据
+3. 模拟数据篡改，观察哈希值变化
+
+## 主要特性说明
+
+### 雪崩效应演示
+- 通过修改单个字符观察哈希值的剧烈变化
+- 使用动画模式直观展示变化过程
+- 统计分析变化位数和分布
+
+### 分布分析
+- 查看字符分布统计
+- 分析熵值和随机性
+- 观察位模式分布
+
+### 对比功能
+- 并排显示两个哈希值
+- 高亮显示差异位置
+- 提供详细的对比统计
+
+## 开发说明
+
+### 添加新功能
+1. 在 `src/components` 中创建新组件
+2. 在 `App.tsx` 中添加路由
+3. 更新导航组件
+
+### 自定义样式
+- 使用 Tailwind CSS 类名
+- 在 `src/styles` 中添加自定义样式
+- 修改 `tailwind.config.js` 配置
+
+## 注意事项
+
+- 大文件处理会在 Web Worker 中进行，避免阻塞主线程
+- 建议使用现代浏览器以获得最佳体验
+- 本工具仅用于教育和演示目的
+
+## 贡献指南
+
+1. Fork 项目
+2. 创建特性分支
+3. 提交更改
+4. 发起 Pull Request
+
+## 许可证
+
+MIT License
