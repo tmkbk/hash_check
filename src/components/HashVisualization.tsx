@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { HashService } from '../utils/hashUtils';
+import { HashService, HashResult } from '../utils/hashUtils';
+import { HistoryService, HistoryFilter } from '../utils/historyService';
+import NotificationService from '../utils/notificationService';
 import {
   ChartBarIcon,
   LightBulbIcon,
@@ -19,7 +21,8 @@ import {
   CheckCircleIcon,
   DocumentDuplicateIcon,
   ArrowsRightLeftIcon,
-  ExclamationTriangleIcon
+  ExclamationTriangleIcon,
+  ClockIcon
 } from '@heroicons/react/24/outline';
 
 interface HashBit {
@@ -217,9 +220,17 @@ export default function HashVisualization() {
   const [processingFiles, setProcessingFiles] = useState(false);
   const [processProgress, setProcessProgress] = useState(0);
 
+  // 添加历史记录相关的状态
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyItems, setHistoryItems] = useState<HashResult[]>([]);
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>({});
+
   const calculateHash = useCallback(async (text: string) => {
     try {
       const result = await HashService.calculateTextHash(text, { algorithm: 'sha256' });
+
+      // 添加到历史记录
+      HistoryService.addToHistory(result);
 
       if (previousHash && result.hash !== previousHash) {
         setAnimateChange(true);
@@ -244,6 +255,7 @@ export default function HashVisualization() {
       setCurrentHash(result.hash);
     } catch (error) {
       console.error('计算哈希值时发生错误:', error);
+      NotificationService.error('计算哈希值时发生错误');
     }
   }, [previousHash, currentHash]);
 
@@ -446,7 +458,7 @@ export default function HashVisualization() {
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const files = Array.from(e.dataTransfer.files);
     handleFiles(files);
   };
@@ -462,25 +474,40 @@ export default function HashVisualization() {
     try {
       setProcessingFiles(true);
       setSelectedFiles(files);
-      
+
       const results = await HashService.calculateBatchFiles(
         files,
         { algorithm: 'sha256' },
         (progress) => setProcessProgress(progress)
       );
-      
+
       // 处理结果
       results.forEach(result => {
         HistoryService.addToHistory(result);
       });
-      
+
       // 如果只有一个文件，直接显示其哈希值
       if (results.length === 1) {
         setCurrentHash(results[0].hash);
       }
-      
+
       NotificationService.success(`成功处理 ${results.length} 个文件`);
     } catch (error) {
+      NotificationService.error('处理文件时发生错误');
+    } finally {
+      setProcessingFiles(false);
+      setProcessProgress(0);
+    }
+  };
+
+  // 加载历史记录
+  useEffect(() => {
+    if (showHistory) {
+      const history = HistoryService.searchHistory(historyFilter);
+      setHistoryItems(history);
+    }
+  }, [showHistory, historyFilter]);
+
   return (
     <div className={`${showFullscreen ? 'fixed inset-0 z-50 bg-white overflow-auto' : ''}`}>
       {/* 顶部导航栏 */}
@@ -2024,6 +2051,125 @@ export default function HashVisualization() {
           )}
         </div>
       </div>
+
+      {/* 历史记录按钮 */}
+      <button
+        onClick={() => setShowHistory(!showHistory)}
+        className={`${buttonBaseStyle} px-3 py-1 rounded-md text-sm ${showHistory ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 hover:bg-gray-200'
+          }`}
+      >
+        <ClockIcon className="h-4 w-4 inline mr-1" />
+        历史记录
+      </button>
+
+      {/* 历史记录面板 */}
+      {showHistory && (
+        <div className="mt-6 bg-white rounded-lg shadow-sm p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-medium flex items-center">
+              <ClockIcon className="h-5 w-5 mr-2" />
+              历史记录
+            </h3>
+            <div className="flex items-center space-x-2">
+              <select
+                value={historyFilter.algorithm || ''}
+                onChange={(e) => setHistoryFilter(prev => ({
+                  ...prev,
+                  algorithm: e.target.value || undefined
+                }))}
+                className={selectBaseStyle}
+              >
+                <option value="">所有算法</option>
+                <option value="sha256">SHA-256</option>
+                <option value="md5">MD5</option>
+                <option value="sha1">SHA-1</option>
+                <option value="sha512">SHA-512</option>
+              </select>
+              <select
+                value={historyFilter.inputType || ''}
+                onChange={(e) => setHistoryFilter(prev => ({
+                  ...prev,
+                  inputType: (e.target.value as 'text' | 'file') || undefined
+                }))}
+                className={selectBaseStyle}
+              >
+                <option value="">所有类型</option>
+                <option value="text">文本</option>
+                <option value="file">文件</option>
+              </select>
+              <button
+                onClick={() => {
+                  HistoryService.clearHistory();
+                  setHistoryItems([]);
+                  NotificationService.success('历史记录已清空');
+                }}
+                className="text-red-600 hover:text-red-700 text-sm"
+              >
+                清空历史
+              </button>
+            </div>
+          </div>
+
+          {historyItems.length === 0 ? (
+            <div className="text-center py-8 text-gray-500">
+              暂无历史记录
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {historyItems.map((item, index) => (
+                <div
+                  key={index}
+                  className="bg-gray-50 p-4 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                  onClick={() => {
+                    if (item.inputType === 'text') {
+                      setInputText(item.hash);
+                    } else if (item.filename) {
+                      NotificationService.info(`文件：${item.filename}`);
+                    }
+                  }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">
+                      {item.inputType === 'file' ? item.filename : '文本输入'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(item.timestamp).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="font-mono text-sm break-all">
+                    {item.hash}
+                  </div>
+                  <div className="mt-2 flex items-center text-xs text-gray-500">
+                    <span className="mr-4">{item.algorithm.toUpperCase()}</span>
+                    {item.processingTime && (
+                      <span>{item.processingTime.toFixed(2)}ms</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={() => {
+                const csv = HistoryService.exportHistory();
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'hash_history.csv';
+                a.click();
+                URL.revokeObjectURL(url);
+                NotificationService.success('历史记录已导出');
+              }}
+              className={`${buttonBaseStyle} px-4 py-2 bg-blue-50 text-blue-600 rounded-md hover:bg-blue-100`}
+            >
+              导出CSV
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 } 
