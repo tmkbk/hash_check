@@ -16,7 +16,10 @@ import {
   SparklesIcon,
   CubeTransparentIcon,
   DocumentChartBarIcon,
-  CheckCircleIcon
+  CheckCircleIcon,
+  DocumentDuplicateIcon,
+  ArrowsRightLeftIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
 interface HashBit {
@@ -128,6 +131,14 @@ interface AnimationState {
   currentStep: number;
 }
 
+interface HashComparison {
+  identical: boolean;
+  diffCount: number;
+  diffPositions: number[];
+  diffBits: number;
+  diffPercentage: number;
+}
+
 // 添加全局按钮基础样式
 const buttonBaseStyle = "focus:outline-none focus:ring-0";
 
@@ -194,6 +205,8 @@ export default function HashVisualization() {
   const [comparisonText, setComparisonText] = useState('');
   const [showVisualPatterns, setShowVisualPatterns] = useState(false);
   const [highlightedBits, setHighlightedBits] = useState<number[]>([]);
+  const [comparisonHash, setComparisonHash] = useState<string>('');
+  const [hashComparison, setHashComparison] = useState<HashComparison | null>(null);
 
   const calculateHash = useCallback(async (text: string) => {
     try {
@@ -339,6 +352,68 @@ export default function HashVisualization() {
       }
     }
     return pattern;
+  };
+
+  // 计算对比哈希值
+  useEffect(() => {
+    if (!showComparison || !comparisonText) {
+      setComparisonHash('');
+      setHashComparison(null);
+      return;
+    }
+
+    const calculateComparisonHash = async () => {
+      try {
+        const result = await HashService.calculateTextHash(comparisonText, { algorithm: 'sha256' });
+        setComparisonHash(result.hash);
+      } catch (error) {
+        console.error('计算对比哈希值时发生错误:', error);
+      }
+    };
+
+    calculateComparisonHash();
+  }, [comparisonText, showComparison]);
+
+  // 计算哈希值差异
+  useEffect(() => {
+    if (!showComparison || !currentHash || !comparisonHash) {
+      setHashComparison(null);
+      return;
+    }
+
+    const diffPositions: number[] = [];
+    let diffCount = 0;
+    let diffBits = 0;
+
+    // 计算十六进制差异
+    for (let i = 0; i < currentHash.length; i++) {
+      if (currentHash[i] !== comparisonHash[i]) {
+        diffPositions.push(i);
+        diffCount++;
+
+        // 计算二进制差异
+        const bin1 = parseInt(currentHash[i], 16).toString(2).padStart(4, '0');
+        const bin2 = parseInt(comparisonHash[i], 16).toString(2).padStart(4, '0');
+        for (let j = 0; j < 4; j++) {
+          if (bin1[j] !== bin2[j]) diffBits++;
+        }
+      }
+    }
+
+    setHashComparison({
+      identical: diffCount === 0,
+      diffCount,
+      diffPositions,
+      diffBits,
+      diffPercentage: (diffBits / (currentHash.length * 4)) * 100
+    });
+  }, [currentHash, comparisonHash, showComparison]);
+
+  // 交换输入文本
+  const handleSwapTexts = () => {
+    const tempText = inputText;
+    setInputText(comparisonText);
+    setComparisonText(tempText);
   };
 
   return (
@@ -529,13 +604,31 @@ export default function HashVisualization() {
             }`}>
             <div className="flex items-center justify-between">
               <label className="block text-sm font-medium">对比文本</label>
-              <button
-                onClick={() => setComparisonText('')}
-                className={`${buttonBaseStyle} flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md`}
-              >
-                <ArrowPathIcon className="h-4 w-4 mr-1" />
-                清空
-              </button>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleSwapTexts}
+                  className={`${buttonBaseStyle} flex items-center px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-md`}
+                  title="交换文本"
+                >
+                  <ArrowsRightLeftIcon className="h-4 w-4 mr-1" />
+                  交换
+                </button>
+                <button
+                  onClick={() => setComparisonText(inputText)}
+                  className={`${buttonBaseStyle} flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md`}
+                  title="复制主输入文本"
+                >
+                  <DocumentDuplicateIcon className="h-4 w-4 mr-1" />
+                  复制主文本
+                </button>
+                <button
+                  onClick={() => setComparisonText('')}
+                  className={`${buttonBaseStyle} flex items-center px-3 py-1 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md`}
+                >
+                  <ArrowPathIcon className="h-4 w-4 mr-1" />
+                  清空
+                </button>
+              </div>
             </div>
             <div className="relative">
               <textarea
@@ -565,53 +658,157 @@ export default function HashVisualization() {
         </div>
 
         {/* 哈希值显示区域 */}
-        <div className="mt-6 bg-white rounded-lg shadow-sm p-4">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center">
-              <TableCellsIcon className="h-5 w-5 mr-2" />
-              <h3 className="font-medium">哈希值</h3>
+        <div className="mt-6 space-y-4">
+          {/* 主哈希值 */}
+          <div className="bg-white rounded-lg shadow-sm p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center">
+                <TableCellsIcon className="h-5 w-5 mr-2" />
+                <h3 className="font-medium">主哈希值</h3>
+              </div>
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-500">
+                  长度: {showBinaryView ? currentHash.length * 4 : currentHash.length} {showBinaryView ? '位' : '字符'}
+                </span>
+              </div>
             </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">
-                长度: {showBinaryView ? currentHash.length * 4 : currentHash.length} {showBinaryView ? '位' : '字符'}
-              </span>
+            <div className={`relative bg-gray-50 p-4 rounded-lg overflow-x-auto transition-all duration-300 ${animateChange ? 'bg-yellow-50' : ''
+              }`}>
+              <div className="font-mono text-sm flex flex-wrap pr-10">
+                {(showBinaryView ? hexToBinary(currentHash) : currentHash).split('').map((bit, index) => {
+                  const hexIndex = showBinaryView ? Math.floor(index / 4) : index;
+                  const isDifferent = hashComparison?.diffPositions.includes(hexIndex);
+
+                  return (
+                    <span
+                      key={index}
+                      onClick={() => handleBitHighlight(index)}
+                      className={`cursor-pointer ${hashBits[hexIndex]?.changed
+                        ? 'bg-yellow-200 text-red-600'
+                        : isDifferent
+                          ? 'bg-red-100 text-red-600'
+                          : highlightedBits.includes(index)
+                            ? 'bg-blue-200'
+                            : ''
+                        } ${showBinaryView ? 'mx-px' : ''
+                        } transition-colors duration-300 p-1 hover:bg-blue-100`}
+                      title={`位置: ${index + 1}`}
+                    >
+                      {bit}
+                    </span>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => handleCopy(currentHash, setHashCopySuccess)}
+                className={`${buttonBaseStyle} absolute right-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors group`}
+                style={{ top: 15 }}
+                title="复制哈希值"
+              >
+                <ClipboardIcon className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                {hashCopySuccess && (
+                  <span className={copySuccessStyle}>
+                    <CheckCircleIcon className="h-3 w-3 mr-1" />
+                    已复制
+                  </span>
+                )}
+              </button>
             </div>
           </div>
-          <div className={`relative bg-gray-50 p-4 rounded-lg overflow-x-auto transition-all duration-300 ${animateChange ? 'bg-yellow-50' : ''
-            }`}>
-            <div className="font-mono text-sm flex flex-wrap pr-10">
-              {(showBinaryView ? hexToBinary(currentHash) : currentHash).split('').map((bit, index) => (
-                <span
-                  key={index}
-                  onClick={() => handleBitHighlight(index)}
-                  className={`cursor-pointer ${hashBits[showBinaryView ? Math.floor(index / 4) : index]?.changed
-                    ? 'bg-yellow-200 text-red-600'
-                    : highlightedBits.includes(index)
-                      ? 'bg-blue-200'
-                      : ''
-                    } ${showBinaryView ? 'mx-px' : ''
-                    } transition-colors duration-300 p-1 hover:bg-blue-100`}
-                  title={`位置: ${index + 1}`}
+
+          {/* 对比哈希值 */}
+          {showComparison && comparisonHash && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <TableCellsIcon className="h-5 w-5 mr-2" />
+                  <h3 className="font-medium">对比哈希值</h3>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className="text-sm text-gray-500">
+                    长度: {showBinaryView ? comparisonHash.length * 4 : comparisonHash.length} {showBinaryView ? '位' : '字符'}
+                  </span>
+                </div>
+              </div>
+              <div className="relative bg-gray-50 p-4 rounded-lg overflow-x-auto">
+                <div className="font-mono text-sm flex flex-wrap pr-10">
+                  {(showBinaryView ? hexToBinary(comparisonHash) : comparisonHash).split('').map((bit, index) => {
+                    const hexIndex = showBinaryView ? Math.floor(index / 4) : index;
+                    const isDifferent = hashComparison?.diffPositions.includes(hexIndex);
+
+                    return (
+                      <span
+                        key={index}
+                        className={`${isDifferent
+                          ? 'bg-red-100 text-red-600'
+                          : ''
+                          } ${showBinaryView ? 'mx-px' : ''
+                          } transition-colors duration-300 p-1`}
+                        title={`位置: ${index + 1}`}
+                      >
+                        {bit}
+                      </span>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => handleCopy(comparisonHash, setHashCopySuccess)}
+                  className={`${buttonBaseStyle} absolute right-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors group`}
+                  style={{ top: 15 }}
+                  title="复制对比哈希值"
                 >
-                  {bit}
-                </span>
-              ))}
+                  <ClipboardIcon className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                  {hashCopySuccess && (
+                    <span className={copySuccessStyle}>
+                      <CheckCircleIcon className="h-3 w-3 mr-1" />
+                      已复制
+                    </span>
+                  )}
+                </button>
+              </div>
             </div>
-            <button
-              onClick={() => handleCopy(currentHash, setHashCopySuccess)}
-              className={`${buttonBaseStyle} absolute right-2 p-1.5 text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors group`}
-              style={{ top: 15 }}
-              title="复制哈希值"
-            >
-              <ClipboardIcon className="h-4 w-4 group-hover:scale-110 transition-transform" />
-              {hashCopySuccess && (
-                <span className={copySuccessStyle}>
-                  <CheckCircleIcon className="h-3 w-3 mr-1" />
-                  已复制
-                </span>
-              )}
-            </button>
-          </div>
+          )}
+
+          {/* 对比结果 */}
+          {showComparison && hashComparison && (
+            <div className="bg-white rounded-lg shadow-sm p-4">
+              <div className="flex items-center mb-4">
+                <ChartBarIcon className="h-5 w-5 mr-2" />
+                <h3 className="font-medium">对比结果</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className={`p-4 rounded-lg ${hashComparison.identical ? 'bg-green-50' : 'bg-red-50'
+                  }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">状态</span>
+                    {hashComparison.identical ? (
+                      <span className="text-green-600 text-sm">完全相同</span>
+                    ) : (
+                      <span className="text-red-600 text-sm">存在差异</span>
+                    )}
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">差异字符数</span>
+                    <span className="text-gray-600 text-sm">{hashComparison.diffCount}</span>
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">差异比特数</span>
+                    <span className="text-gray-600 text-sm">{hashComparison.diffBits}</span>
+                  </div>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">差异比例</span>
+                    <span className="text-gray-600 text-sm">{hashComparison.diffPercentage.toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 可视化模式 */}
