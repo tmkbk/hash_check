@@ -42,7 +42,7 @@ export const useHashAnalysis = (
   const [hashComparison, setHashComparison] = useState<HashComparison | null>(
     null
   );
-  const [hashAnalysis, setHashAnalysis] = useState<BinaryAnalysis | null>(null);
+  const [hashAnalysis] = useState<BinaryAnalysis | null>(null);
   const [comparisonAnalysis, setComparisonAnalysis] =
     useState<ComparisonAnalysisResult | null>(null);
 
