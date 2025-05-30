@@ -1,7 +1,7 @@
 import { TableCellsIcon, ClipboardIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
 import { copySuccessStyle } from '@/constants/styles';
 import { HashBit } from '@/types/hash';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 interface HashDisplayProps {
   title: string;
@@ -28,6 +28,7 @@ const HashDisplay: React.FC<HashDisplayProps> = ({
   previousHash
 }) => {
   const [changedBits, setChangedBits] = useState<number[]>([]);
+  const [tooltips, setTooltips] = useState<string[]>([]);
 
   useEffect(() => {
     if (previousHash && currentHash !== previousHash) {
@@ -52,6 +53,48 @@ const HashDisplay: React.FC<HashDisplayProps> = ({
     }
   }, [currentHash, previousHash, showBinaryView]);
 
+  useEffect(() => {
+    const newTooltips = (showBinaryView ? hexToBinary(currentHash) : currentHash).split('').map((_, index) => {
+      const hexIndex = showBinaryView ? Math.floor(index / 4) : index;
+      const isDifferent = diffPositions.includes(hexIndex);
+      const isChanged = changedBits.includes(index);
+
+      let tooltipText = `位置: ${index + 1}`;
+
+      if (diffPositions.length > 0) {
+        tooltipText += isDifferent ? ' (差异)' : ' (相同)';
+      } else if (previousHash) {
+        tooltipText += isChanged ? ' (已更改)' : ' (未更改)';
+      } else {
+        tooltipText += ' (初始值)';
+      }
+
+      return tooltipText;
+    });
+
+    setTooltips(newTooltips);
+  }, [currentHash, showBinaryView, diffPositions, changedBits, previousHash]);
+
+  const getDisplayStyle = useCallback((index: number) => {
+    const hexIndex = showBinaryView ? Math.floor(index / 4) : index;
+    const isDifferent = diffPositions.includes(hexIndex);
+    const isChanged = changedBits.includes(index);
+
+    if (diffPositions.length > 0) {
+      return isDifferent
+        ? 'bg-red-50 text-red-600 font-medium border border-red-200'
+        : 'bg-green-50 text-green-600 font-medium border border-green-200';
+    }
+
+    if (previousHash) {
+      return isChanged
+        ? 'bg-red-50 text-red-600 font-medium border border-red-200'
+        : 'bg-green-50 text-green-600 font-medium border border-green-200';
+    }
+
+    return 'bg-green-50 text-green-600 font-medium border border-green-200';
+  }, [diffPositions, changedBits, previousHash, showBinaryView]);
+
   const hexToBinary = (hex: string): string => {
     return hex.split('').map(char =>
       parseInt(char, 16).toString(2).padStart(4, '0')
@@ -74,55 +117,19 @@ const HashDisplay: React.FC<HashDisplayProps> = ({
 
       <div className="relative">
         <div className="font-mono text-sm flex flex-wrap pr-10 py-2">
-          {(showBinaryView ? hexToBinary(currentHash) : currentHash).split('').map((bit, index) => {
-            const hexIndex = showBinaryView ? Math.floor(index / 4) : index;
-            const isDifferent = diffPositions.includes(hexIndex);
-            const isChanged = changedBits.includes(index);
-
-            // 确定显示样式
-            let displayStyle = '';
-            let tooltipText = `位置: ${index + 1}`;
-
-            // 在对比模式下（有diffPositions），使用对比样式
-            if (diffPositions.length > 0) {
-              if (isDifferent) {
-                displayStyle = 'bg-red-50 text-red-600 font-medium border border-red-200';
-                tooltipText += ' (差异)';
-              } else {
-                displayStyle = 'bg-green-50 text-green-600 font-medium border border-green-200';
-                tooltipText += ' (相同)';
-              }
-            }
-            // 在非对比模式下，显示前后变化对比
-            else if (previousHash) {
-              if (isChanged) {
-                displayStyle = 'bg-red-50 text-red-600 font-medium border border-red-200';
-                tooltipText += ' (已更改)';
-              } else {
-                displayStyle = 'bg-green-50 text-green-600 font-medium border border-green-200';
-                tooltipText += ' (未更改)';
-              }
-            }
-            // 初始状态或重置状态，全部显示为绿色
-            else {
-              displayStyle = 'bg-green-50 text-green-600 font-medium border border-green-200';
-              tooltipText += ' (初始值)';
-            }
-
-            return (
-              <span
-                key={index}
-                onClick={() => onBitHighlight(index)}
-                className={`cursor-pointer transition-all duration-300 p-1.5 rounded-md m-0.5
-                  ${displayStyle}
-                  ${showBinaryView ? 'mx-1' : 'mx-0.5'}
-                  hover:bg-opacity-75`}
-                title={tooltipText}
-              >
-                {bit}
-              </span>
-            );
-          })}
+          {(showBinaryView ? hexToBinary(currentHash) : currentHash).split('').map((bit, index) => (
+            <span
+              key={index}
+              onClick={() => onBitHighlight(index)}
+              className={`cursor-pointer transition-all duration-300 p-1.5 rounded-md m-0.5
+                ${getDisplayStyle(index)}
+                ${showBinaryView ? 'mx-1' : 'mx-0.5'}
+                hover:bg-opacity-75`}
+              title={tooltips[index]}
+            >
+              {bit}
+            </span>
+          ))}
         </div>
         <button
           onClick={onCopy}

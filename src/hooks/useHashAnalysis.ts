@@ -9,7 +9,8 @@ import {
 import {
   calculateHashStats,
   calculateHashComparison,
-  generateComparisonAnalysis
+  generateComparisonAnalysis,
+  analyzeBinary
 } from '@/utils/hashAnalysis';
 
 const calculateSHA256 = async (text: string): Promise<string> => {
@@ -42,11 +43,24 @@ export const useHashAnalysis = (
   const [hashComparison, setHashComparison] = useState<HashComparison | null>(
     null
   );
-  const [hashAnalysis] = useState<BinaryAnalysis | null>(null);
+  const [hashAnalysis, setHashAnalysis] = useState<BinaryAnalysis | null>(null);
   const [comparisonAnalysis, setComparisonAnalysis] =
     useState<ComparisonAnalysisResult | null>(null);
 
   const updateHash = useCallback(async (text: string, isComparison = false) => {
+    if (!text) {
+      if (isComparison) {
+        setComparisonHash('');
+        setComparisonAnalysis(null);
+      } else {
+        setCurrentHash('');
+        setHashBits([]);
+        setHashStats(null);
+        setHashAnalysis(null);
+      }
+      return;
+    }
+
     const hash = await calculateSHA256(text);
     if (isComparison) {
       setComparisonHash(hash);
@@ -56,7 +70,9 @@ export const useHashAnalysis = (
         hash.split('').map((char: string) => ({ value: char, changed: false }))
       );
       const stats = calculateHashStats(hash);
+      const analysis = analyzeBinary(hash);
       setHashStats(stats);
+      setHashAnalysis(analysis);
     }
   }, []);
 
@@ -69,6 +85,7 @@ export const useHashAnalysis = (
       void updateHash(comparisonText, true);
     } else {
       setComparisonHash('');
+      setComparisonAnalysis(null);
     }
   }, [comparisonText, updateHash]);
 

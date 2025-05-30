@@ -68,6 +68,18 @@ export const calculateHashComparison = (
   inputText: string,
   comparisonText: string
 ): HashComparison => {
+  if (!currentHash || !comparisonHash) {
+    return {
+      identical: false,
+      diffCount: 0,
+      diffPositions: [],
+      diffBits: 0,
+      diffPercentage: 0,
+      entropy: 0,
+      avalancheEffect: 0
+    };
+  }
+
   const diffPositions: number[] = [];
   let diffCount = 0;
   let diffBits = 0;
@@ -86,9 +98,12 @@ export const calculateHashComparison = (
   }
 
   // 计算输入文本的差异位数
-  const inputDiffBits = Array.from(inputText).reduce((count, char, i) => {
-    return count + (char !== comparisonText[i] ? 1 : 0);
-  }, 0);
+  const inputDiffBits =
+    inputText && comparisonText
+      ? Array.from(inputText).reduce((count, char, i) => {
+          return count + (char !== comparisonText[i] ? 1 : 0);
+        }, 0)
+      : 0;
 
   // 计算哈希值的差异位数（二进制级别）
   const mainBinary = hexToBinary(currentHash);

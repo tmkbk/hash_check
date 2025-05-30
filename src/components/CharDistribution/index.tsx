@@ -1,3 +1,7 @@
+/**
+ * 这是字符分布组件，用于显示字符分布的分析结果
+ * 包括字符、字符数量、对比字符数量、总字符数量、对比总字符数量、是否显示差异
+ */
 import React from 'react';
 
 interface CharDistributionProps {

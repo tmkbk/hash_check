@@ -1,3 +1,13 @@
+/**
+ * 这是分析面板，用于显示哈希值的分析结果
+ * 包括基础分析、字符分布分析、序列分析、对比分析
+ * 
+ * 基础分析：显示哈希值的熵值质量、分布均匀度、二进制比例、连续性分析
+ * 字符分布分析：显示哈希值的字符分布
+ * 序列分析：显示哈希值的连续性分析、模式分析
+ * 对比分析：显示对比哈希值的差异位数、雪崩效应、分布变化、差异分布热图、字符分布对比、分析总结
+ */
+
 import React from 'react';
 import {
   ChartPieIcon,
@@ -45,7 +55,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* 基础分析 */}
+      {/* 基础分析 - 快速总览 */}
       <section className="bg-white rounded-lg shadow-sm p-6">
         <h3 className="text-lg font-medium flex items-center mb-4">
           <BeakerIcon className="h-6 w-6 mr-2 text-blue-600" />
@@ -91,16 +101,14 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         </div>
       </section>
 
-      {/* 分布分析 */}
-      <section className="bg-white rounded-lg shadow-sm p-6">
-        <h3 className="text-lg font-medium flex items-center mb-4">
-          <ChartPieIcon className="h-6 w-6 mr-2 text-blue-600" />
-          分布分析
-        </h3>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 字符分布 */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium text-gray-700">字符分布</h4>
+      {/* 字符分布分析 */}
+      {!comparisonHash && (
+        <section className="bg-white rounded-lg shadow-sm p-6">
+          <h3 className="text-lg font-medium flex items-center mb-4">
+            <ChartPieIcon className="h-6 w-6 mr-2 text-blue-600" />
+            字符分布
+          </h3>
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-lg">
             <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2">
               {hashStats.distribution.map(([char, count], index) => (
                 <CharDistribution
@@ -112,45 +120,8 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
               ))}
             </div>
           </div>
-
-          {/* 二进制分析 */}
-          <div className="space-y-4">
-            <h4 className="text-sm font-medium text-gray-700">二进制分析</h4>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="text-sm text-gray-600 mb-1">0比特数量</div>
-                  <div className="text-2xl font-bold text-blue-700">
-                    {hashAnalysis?.zeros || 0}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {((hashAnalysis?.zeros || 0) / (currentHash.length * 4) * 100).toFixed(1)}%
-                  </div>
-                </div>
-                <div>
-                  <div className="text-sm text-gray-600 mb-1">1比特数量</div>
-                  <div className="text-2xl font-bold text-blue-700">
-                    {hashAnalysis?.ones || 0}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {((hashAnalysis?.ones || 0) / (currentHash.length * 4) * 100).toFixed(1)}%
-                  </div>
-                </div>
-              </div>
-              <div className="mt-4">
-                <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-600"
-                    style={{
-                      width: `${((hashAnalysis?.ones || 0) / (currentHash.length * 4)) * 100}%`
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* 序列分析 */}
       <section className="bg-white rounded-lg shadow-sm p-6">
@@ -160,18 +131,18 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* 连续性分析 */}
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="bg-gradient-to-br from-purple-50 to-fuchsia-50 p-4 rounded-lg">
             <h4 className="text-sm font-medium text-gray-700 mb-3">连续性分析</h4>
             <div className="space-y-4">
               <div>
                 <div className="text-sm text-gray-600 mb-1">最长连续相同字符</div>
-                <div className="text-2xl font-bold text-blue-700">
+                <div className="text-2xl font-bold text-purple-700">
                   {Math.max(...currentHash.match(/(.)\1*/g)?.map(s => s.length) || [0])}
                 </div>
               </div>
               <div>
                 <div className="text-sm text-gray-600 mb-1">不同字符对数量</div>
-                <div className="text-2xl font-bold text-blue-700">
+                <div className="text-2xl font-bold text-purple-700">
                   {new Set(currentHash.match(/.{2}/g)).size}
                 </div>
               </div>
@@ -179,18 +150,18 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
           </div>
 
           {/* 模式分析 */}
-          <div className="bg-gray-50 p-4 rounded-lg">
+          <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 rounded-lg">
             <h4 className="text-sm font-medium text-gray-700 mb-3">模式分析</h4>
             <div className="space-y-4">
               <div>
                 <div className="text-sm text-gray-600 mb-1">重复模式数</div>
-                <div className="text-2xl font-bold text-blue-700">
+                <div className="text-2xl font-bold text-orange-700">
                   {new Set(currentHash.match(/.{2}/g)).size}
                 </div>
               </div>
               <div>
                 <div className="text-sm text-gray-600 mb-1">独特字符数</div>
-                <div className="text-2xl font-bold text-blue-700">
+                <div className="text-2xl font-bold text-orange-700">
                   {new Set(currentHash.split('')).size}
                 </div>
               </div>
@@ -207,6 +178,7 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             对比分析
           </h3>
           <div className="space-y-6">
+            {/* 基本差异指标 */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-lg">
                 <h4 className="text-sm font-medium text-gray-700 mb-2">差异位数</h4>
@@ -238,12 +210,29 @@ const AnalysisPanel: React.FC<AnalysisPanelProps> = ({
             </div>
 
             {/* 差异热图 */}
-            <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="bg-gradient-to-br from-cyan-50 to-sky-50 p-4 rounded-lg">
               <h4 className="text-sm font-medium text-gray-700 mb-3">差异分布热图</h4>
               <DiffHeatmap
                 diffPositions={hashComparison.diffPositions}
                 totalLength={currentHash.length}
               />
+            </div>
+
+            {/* 字符分布对比 */}
+            <div className="bg-gradient-to-br from-teal-50 to-emerald-50 p-4 rounded-lg">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">字符分布对比</h4>
+              <div className="space-y-2">
+                {comparisonAnalysis.charDistribution.map((item, index) => (
+                  <CharDistribution
+                    key={index}
+                    char={item.char}
+                    mainCount={item.mainCount}
+                    compCount={item.compCount}
+                    total={currentHash.length}
+                    compTotal={comparisonHash.length}
+                  />
+                ))}
+              </div>
             </div>
 
             {/* 分析总结 */}

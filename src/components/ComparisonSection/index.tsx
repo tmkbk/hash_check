@@ -1,3 +1,7 @@
+/**
+ * 这是对比文本输入部分
+ */
+
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { buttonBaseStyle } from '@/constants/styles';
 
@@ -29,7 +33,7 @@ const ComparisonSection: React.FC<ComparisonSectionProps> = ({
         <textarea
           value={comparisonText}
           onChange={(e) => onComparisonChange(e.target.value)}
-          className="w-full h-24 p-3 border border-gray-200 rounded-md focus:border-blue-400 focus:ring-0 resize-none"
+          className="w-full h-32 p-3 border border-gray-200 rounded-md focus:border-blue-400 focus:ring-0 resize-none"
           placeholder="在此输入要对比的文本..."
         />
       </div>

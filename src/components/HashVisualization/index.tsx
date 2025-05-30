@@ -50,7 +50,7 @@ const HashVisualization: React.FC = () => {
     toggleAnimation,
     setAnimationSpeed,
     resetAnimation
-  } = useAnimationState(currentDemo, handleInputChange);
+  } = useAnimationState(currentDemo, setInputText);
 
   // 当哈希值改变时更新previousHash
   useEffect(() => {
@@ -105,12 +105,24 @@ const HashVisualization: React.FC = () => {
 
   // 处理演示示例选择
   const handleDemoSelect = useCallback((index: number) => {
-    setSelectedDemoIndex(index);
     const demo = INTERACTIVE_DEMOS[index];
+    setSelectedDemoIndex(index);
     setCurrentDemo(demo);
-    handleInputChange(demo.input);
-    setComparisonText('');
-  }, []);
+    setInputText(demo.input);
+    resetAnimation();
+    // 确保动画状态被正确重置
+    if (demo.animation) {
+      setInputText(demo.animation.sequence[0]);
+    }
+  }, [resetAnimation]);
+
+  // 添加 useEffect 来监听动画状态变化
+  useEffect(() => {
+    if (currentDemo?.animation && animationState.isPlaying) {
+      const sequence = currentDemo.animation.sequence;
+      setInputText(sequence[animationState.currentStep]);
+    }
+  }, [currentDemo, animationState.isPlaying, animationState.currentStep]);
 
   // 处理二进制视图切换
   const handleBinaryViewToggle = useCallback(() => {

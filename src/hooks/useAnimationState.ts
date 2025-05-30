@@ -1,58 +1,100 @@
-import { useState, useEffect, useCallback } from 'react';
-import { AnimationState, DemoExample } from '@/types/hash';
-
-interface UseAnimationStateResult {
-  animationState: AnimationState;
-  toggleAnimation: () => void;
-  setAnimationSpeed: (speed: AnimationState['speed']) => void;
-  resetAnimation: () => void;
-}
+import { useState, useCallback, useEffect } from 'react';
+import { DemoExample, AnimationState } from '@/types/hash';
 
 export const useAnimationState = (
   currentDemo: DemoExample | null,
-  onStepChange: (text: string) => void
-): UseAnimationStateResult => {
+  onInputChange: (text: string) => void
+) => {
   const [animationState, setAnimationState] = useState<AnimationState>({
     isPlaying: false,
     speed: 'normal',
     currentStep: 0
   });
 
-  const toggleAnimation = useCallback(() => {
-    setAnimationState((prev) => ({ ...prev, isPlaying: !prev.isPlaying }));
+  const [animationTimer, setAnimationTimer] = useState<NodeJS.Timeout | null>(
+    null
+  );
+
+  const getAnimationInterval = useCallback((speed: AnimationState['speed']) => {
+    switch (speed) {
+      case 'slow':
+        return 3000; // 慢速：3秒
+      case 'fast':
+        return 1500; // 快速：1.5秒
+      default:
+        return 2000; // 正常：2秒
+    }
   }, []);
+
+  const toggleAnimation = useCallback(() => {
+    if (!currentDemo?.animation) return;
+
+    setAnimationState((prev) => ({
+      ...prev,
+      isPlaying: !prev.isPlaying,
+      currentStep: !prev.isPlaying ? prev.currentStep : 0
+    }));
+  }, [currentDemo]);
 
   const setAnimationSpeed = useCallback((speed: AnimationState['speed']) => {
     setAnimationState((prev) => ({ ...prev, speed }));
   }, []);
 
   const resetAnimation = useCallback(() => {
+    if (animationTimer) {
+      clearInterval(animationTimer);
+      setAnimationTimer(null);
+    }
     setAnimationState({
       isPlaying: false,
       speed: 'normal',
       currentStep: 0
     });
-  }, []);
+  }, [animationTimer]);
+
+  // 更新动画序列
+  const updateAnimationStep = useCallback(() => {
+    if (!currentDemo?.animation) return;
+    const sequence = currentDemo.animation.sequence;
+
+    setAnimationState((prev) => {
+      const nextStep = (prev.currentStep + 1) % sequence.length;
+      onInputChange(sequence[nextStep]);
+      return { ...prev, currentStep: nextStep };
+    });
+  }, [currentDemo, onInputChange]);
 
   useEffect(() => {
-    if (!currentDemo?.animation || !animationState.isPlaying) return;
+    if (!currentDemo?.animation || !animationState.isPlaying) {
+      if (animationTimer) {
+        clearInterval(animationTimer);
+        setAnimationTimer(null);
+      }
+      return;
+    }
 
-    const speeds = { slow: 2000, normal: 1500, fast: 1000 };
-    const interval = setInterval(() => {
-      setAnimationState((prev) => {
-        const nextStep =
-          (prev.currentStep + 1) % currentDemo.animation!.sequence.length;
-        onStepChange(currentDemo.animation!.sequence[nextStep]);
-        return { ...prev, currentStep: nextStep };
-      });
-    }, speeds[animationState.speed]);
+    // 立即执行第一步
+    updateAnimationStep();
 
-    return () => clearInterval(interval);
+    // 设置定时器进行后续步骤
+    const interval = setInterval(
+      updateAnimationStep,
+      getAnimationInterval(animationState.speed)
+    );
+    setAnimationTimer(interval);
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+        setAnimationTimer(null);
+      }
+    };
   }, [
     currentDemo,
     animationState.isPlaying,
     animationState.speed,
-    onStepChange
+    getAnimationInterval,
+    updateAnimationStep
   ]);
 
   return {

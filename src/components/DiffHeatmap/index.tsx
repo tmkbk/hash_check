@@ -24,11 +24,11 @@ const DiffHeatmap: React.FC<DiffHeatmapProps> = ({ diffPositions, totalLength })
   }
 
   return (
-    <div className="space-y-1">
+    <div className="space-y-1.5">
       {rows.map((row, rowIndex) => (
-        <div key={rowIndex} className="flex space-x-1">
+        <div key={rowIndex} className="flex space-x-2">
           {/* 行号 */}
-          <div className="w-12 text-xs text-gray-500 flex items-center">
+          <div className="w-12 text-xs font-mono text-gray-500 flex items-center">
             {(rowIndex * cellsPerRow).toString(16).padStart(2, '0')}
           </div>
           {/* 热图单元格 */}
@@ -37,26 +37,29 @@ const DiffHeatmap: React.FC<DiffHeatmapProps> = ({ diffPositions, totalLength })
               <div
                 key={colIndex}
                 className={`
-                  w-6 h-6 rounded-sm transition-colors duration-200
-                  ${value ? 'bg-red-500' : 'bg-gray-100'}
-                  hover:opacity-75 cursor-pointer
+                  w-7 h-7 rounded-md transition-all duration-200
+                  ${value ? 'bg-red-500 shadow-md shadow-red-200' : 'bg-green-400 shadow-sm shadow-green-100'}
+                  hover:scale-105 hover:shadow-lg cursor-pointer
+                  ${value ? 'hover:shadow-red-200' : 'hover:shadow-green-200'}
                 `}
-                title={`Position: ${rowIndex * cellsPerRow + colIndex}`}
+                title={`Position: ${rowIndex * cellsPerRow + colIndex} (${value ? '差异' : '相同'})`}
               />
             ))}
           </div>
         </div>
       ))}
-      <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
-        <div className="flex items-center space-x-2">
-          <div className="w-4 h-4 bg-red-500 rounded-sm" />
-          <span>差异位置</span>
+      <div className="mt-6 flex items-center justify-between text-sm text-gray-600 p-3 rounded-lg">
+        <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
+            <div className="w-5 h-5 bg-green-400 rounded-md shadow-sm" />
+            <span>相同位置</span>
+          </div>
+          <div className="flex items-center space-x-2">
+            <div className="w-5 h-5 bg-red-500 rounded-md shadow-md" />
+            <span>差异位置</span>
+          </div>
         </div>
-        <div className="flex items-center space-x-2">
-          <div className="w-4 h-4 bg-gray-100 rounded-sm" />
-          <span>相同位置</span>
-        </div>
-        <div>
+        <div className="font-medium">
           共 {diffPositions.length} 处差异
         </div>
       </div>
@@ -64,4 +67,4 @@ const DiffHeatmap: React.FC<DiffHeatmapProps> = ({ diffPositions, totalLength })
   );
 };
 
-export default DiffHeatmap; 
+export default DiffHeatmap;

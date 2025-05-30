@@ -1,3 +1,8 @@
+/**
+ * 这是二进制分布组件，用于显示二进制分布的分析结果
+ * 包括0/1比例、零位数量、一位数量
+ */
+
 import DistributionBar from '@/components/DistributionBar';
 
 interface BinaryDistributionProps {

@@ -28,10 +28,13 @@ const InputSection: React.FC<InputSectionProps> = ({
           <h3 className="font-medium">输入文本</h3>
           <div className="flex items-center space-x-2">
             {currentDemo?.animation && (
-              <>
+              <div className="flex items-center space-x-2">
                 <button
                   onClick={onAnimationToggle}
-                  className={`${buttonBaseStyle} p-1.5 text-gray-600 hover:text-blue-600 rounded-md hover:bg-blue-50`}
+                  className={`${buttonBaseStyle} p-1.5 rounded-md transition-colors ${animationState.isPlaying
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'
+                    }`}
                   title={animationState.isPlaying ? '暂停动画' : '播放动画'}
                 >
                   {animationState.isPlaying ? (
@@ -43,18 +46,20 @@ const InputSection: React.FC<InputSectionProps> = ({
                 <select
                   value={animationState.speed}
                   onChange={(e) => onAnimationSpeedChange(e.target.value as AnimationState['speed'])}
-                  className={selectBaseStyle}
+                  className={`h-full ${selectBaseStyle} ${animationState.isPlaying ? 'bg-blue-50' : ''
+                    }`}
                 >
                   <option value="slow">慢速</option>
                   <option value="normal">正常</option>
                   <option value="fast">快速</option>
                 </select>
-              </>
+              </div>
             )}
             <button
               onClick={onResetDemo}
               className={`${buttonBaseStyle} p-1.5 text-gray-600 hover:text-blue-600 rounded-md hover:bg-blue-50`}
               title="重置输入"
+              disabled={animationState.isPlaying}
             >
               <ArrowPathIcon className="h-5 w-5" />
             </button>
@@ -63,13 +68,19 @@ const InputSection: React.FC<InputSectionProps> = ({
         <textarea
           value={inputText}
           onChange={(e) => onInputChange(e.target.value)}
-          className="w-full h-24 p-3 border border-gray-200 rounded-md focus:border-blue-400 focus:ring-0 resize-none"
-          placeholder="在此输入要计算哈希值的文本..."
+          className={`w-full h-32 p-3 border rounded-lg focus:ring-0 border-gray-200  resize-none ${animationState.isPlaying ? 'bg-gray-50' : ''
+            }`}
+          placeholder="在此输入文本..."
+          disabled={animationState.isPlaying}
         />
         {currentDemo && (
-          <div className="bg-blue-50 p-3 rounded-md">
-            <h4 className="font-medium text-sm mb-1">{currentDemo.title}</h4>
-            <p className="text-sm text-gray-600">{currentDemo.description}</p>
+          <div className="text-sm text-gray-500">
+            <p>{currentDemo.description}</p>
+            {currentDemo.animation && (
+              <p className="mt-1 text-blue-600">
+                提示：点击播放按钮开始动画演示
+              </p>
+            )}
           </div>
         )}
       </div>
