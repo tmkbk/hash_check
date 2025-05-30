@@ -1,8 +1,9 @@
 import {
   HashStats,
   HashComparison,
-  ComparisonAnalysisResult
-} from '../types/hash';
+  ComparisonAnalysisResult,
+  BinaryAnalysis
+} from '@/types/hash';
 
 export const hexToBinary = (hex: string): string => {
   return hex
@@ -29,6 +30,17 @@ export const getEntropyQuality = (entropy: number): string => {
   if (entropy > 7) return '高';
   if (entropy > 5) return '中';
   return '低';
+};
+
+export const getDistributionQuality = (
+  maxCount: number,
+  minCount: number
+): string => {
+  const ratio = maxCount / minCount;
+  if (ratio < 1.5) return '优秀';
+  if (ratio < 2) return '良好';
+  if (ratio < 3) return '一般';
+  return '不均匀';
 };
 
 export const calculateHashStats = (hash: string): HashStats => {
@@ -175,5 +187,24 @@ export const generateComparisonAnalysis = (
     frontHalfPercentage,
     backHalfPercentage,
     summary
+  };
+};
+
+export const analyzeBinary = (hash: string): BinaryAnalysis => {
+  // 将十六进制转换为二进制字符串
+  const binaryString = hash
+    .split('')
+    .map((char) => parseInt(char, 16).toString(2).padStart(4, '0'))
+    .join('');
+
+  // 计算0和1的数量
+  const ones = (binaryString.match(/1/g) || []).length;
+  const zeros = (binaryString.match(/0/g) || []).length;
+
+  return {
+    binary: binaryString,
+    ones,
+    zeros,
+    total: ones + zeros
   };
 };

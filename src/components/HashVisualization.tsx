@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { HashService } from '../utils/hashUtils';
-import NotificationService from '../utils/notificationService';
+import { HashService } from '@/utils/hashUtils';
+import NotificationService from '@/utils/notificationService';
 import {
   ChartBarIcon,
   LightBulbIcon,
@@ -23,7 +23,7 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 
-import { HashBit, DemoExample } from '../types/hash';
+import { HashBit, DemoExample } from '@/types/hash';
 
 const INTERACTIVE_DEMOS: DemoExample[] = [
   {

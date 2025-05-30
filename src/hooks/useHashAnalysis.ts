@@ -5,12 +5,12 @@ import {
   HashComparison,
   BinaryAnalysis,
   ComparisonAnalysisResult
-} from '../types/hash';
+} from '@/types/hash';
 import {
   calculateHashStats,
   calculateHashComparison,
   generateComparisonAnalysis
-} from '../utils/hashAnalysis';
+} from '@/utils/hashAnalysis';
 
 const calculateSHA256 = async (text: string): Promise<string> => {
   const encoder = new TextEncoder();

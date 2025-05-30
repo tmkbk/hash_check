@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, InformationCircleIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import NotificationService, { Notification } from '../utils/notificationService';
+import NotificationService, { Notification } from '@/utils/notificationService';
 
 const ICONS = {
   success: CheckCircleIcon,

@@ -1,4 +1,4 @@
-import DistributionBar from '../DistributionBar';
+import DistributionBar from '@/components/DistributionBar';
 
 interface BinaryDistributionProps {
   zeros: number;

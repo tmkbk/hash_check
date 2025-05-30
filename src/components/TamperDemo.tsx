@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { HashService, HashAnalysis } from '../utils/hashUtils';
+import { HashService, HashAnalysis } from '@/utils/hashUtils';
 import {
   DocumentCheckIcon,
   DocumentDuplicateIcon,

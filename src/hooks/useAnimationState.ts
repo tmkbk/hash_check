@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { AnimationState, DemoExample } from '../types/hash';
+import { AnimationState, DemoExample } from '@/types/hash';
 
 interface UseAnimationStateResult {
   animationState: AnimationState;

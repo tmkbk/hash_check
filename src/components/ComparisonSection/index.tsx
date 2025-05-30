@@ -1,5 +1,5 @@
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
-import { buttonBaseStyle } from '../../../../constants/styles';
+import { buttonBaseStyle } from '@/constants/styles';
 
 interface ComparisonSectionProps {
   comparisonText: string;
@@ -17,6 +17,7 @@ const ComparisonSection: React.FC<ComparisonSectionProps> = ({
       <div className="flex flex-col space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-medium">对比文本</h3>
+          <p>输入对比文本后进入对比模式</p>
           <button
             onClick={onResetComparison}
             className={`${buttonBaseStyle} p-1.5 text-gray-600 hover:text-blue-600 rounded-md hover:bg-blue-50`}

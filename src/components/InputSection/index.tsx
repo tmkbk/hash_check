@@ -1,6 +1,6 @@
 import { ArrowPathIcon, PlayIcon, PauseIcon } from '@heroicons/react/24/outline';
-import { buttonBaseStyle, selectBaseStyle } from '../../../../constants/styles';
-import { DemoExample, AnimationState } from '../../../../types/hash';
+import { buttonBaseStyle, selectBaseStyle } from '@/constants/styles';
+import { DemoExample, AnimationState } from '@/types/hash';
 
 interface InputSectionProps {
   inputText: string;

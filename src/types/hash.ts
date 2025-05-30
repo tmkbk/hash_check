@@ -37,11 +37,10 @@ export interface HashComparison {
 }
 
 export interface BinaryAnalysis {
-  binaryString: string;
-  zeros: number;
+  binary: string;
   ones: number;
-  zeroPercentage: number;
-  onePercentage: number;
+  zeros: number;
+  total: number;
 }
 
 export interface ComparisonAnalysisResult {
