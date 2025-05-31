@@ -3,6 +3,7 @@ import { HashComparison, ComparisonAnalysisResult } from '@/types/hash';
 
 interface HashComparisonViewProps {
   currentHash: string;
+  comparisonHash: string;
   hashComparison: HashComparison;
   comparisonAnalysis: ComparisonAnalysisResult;
   showBinaryView: boolean;
